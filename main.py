@@ -4,72 +4,121 @@ from pathlib import Path
 pygame.init()
 
 # =========================
-# RUTAS (usa tus nombres)
+# RUTAS / CONFIG
 # =========================
 BASE_DIR = Path(__file__).resolve().parent
 os.chdir(BASE_DIR)
 ASSETS = BASE_DIR / "assets"
 
-# Cambia estos nombres si no coinciden EXACTO con los tuyos
-bg_path       = ASSETS / "Background_fondo.jpeg"      # <-- pon aquí el nombre exacto
-title_path    = ASSETS / "titulo_juego.png"
-jugar_path    = ASSETS / "btn_play.jpeg"
-opciones_path = ASSETS / "btn_opc.jpeg"
-instru_path   = ASSETS / "btn_instrucciones.jpeg"      # <-- pon aquí el nombre exacto
+# Usa estos prefijos tal como están en tu carpeta
+STEMS = {
+    "bg":    "Background_f",    # ej. Background_fondo.jpeg
+    "title": "titulo_juego",    # ej. titulo_juego.png
+    "play":  "btn_play",        # ej. btn_play.png
+    "opc":   "btn_opc",         # ej. btn_opc.png
+    "inst":  "btn_instruccio",  # ej. btn_instrucciones.png / btn_instruccio.png
+}
+
+SHOW_DEBUG_BORDERS = False  # True para ver rectángulos de debug
 
 # =========================
-# CARGA
+# HELPERS: CARGAR SIN CONVERT
 # =========================
-background = pygame.image.load(str(bg_path))    # sin convert aún
-W, H = background.get_size()
+def find_by_stem(stem: str) -> Path | None:
+    """Devuelve el primer archivo que empieza con stem y tiene .png/.jpg/.jpeg."""
+    exts = (".png", ".jpg", ".jpeg")
+    # coincidencia exacta: stem.ext
+    for ext in exts:
+        p = ASSETS / f"{stem}{ext}"
+        if p.exists():
+            return p
+    # prefijo: stem*ext (elige el nombre más corto)
+    candidates = []
+    for ext in exts:
+        candidates += list(ASSETS.glob(f"{stem}*{ext}"))
+    if not candidates:
+        return None
+    return sorted(candidates, key=lambda p: len(p.name))[0]
+
+def load_raw(stem: str):
+    """Carga la imagen SIN convert/convert_alpha (eso se hace después de set_mode)."""
+    p = find_by_stem(stem)
+    if not p:
+        raise FileNotFoundError(f"No encontré '{stem}*.png/.jpg/.jpeg' en {ASSETS}")
+    surf = pygame.image.load(str(p))  # <- sin convert aquí
+    print(f"[OK] Cargado: {p.name}")
+    return surf, p
+
+# Escalado suave por factor
+def sscale(surf: pygame.Surface, factor: float) -> pygame.Surface:
+    return pygame.transform.smoothscale(
+        surf, (int(surf.get_width()*factor), int(surf.get_height()*factor))
+    )
+
+# Escalar a ancho fijo
+def scale_to_width(img: pygame.Surface, new_w: int) -> pygame.Surface:
+    ratio = new_w / img.get_width()
+    new_h = int(img.get_height() * ratio)
+    return pygame.transform.smoothscale(img, (new_w, new_h))
+
+# =========================
+# CARGA EN CRUDO + CREAR VENTANA
+# =========================
+bg_raw, bg_path = load_raw(STEMS["bg"])
+W, H = bg_raw.get_size()
+
 screen = pygame.display.set_mode((W, H))
 pygame.display.set_caption("Guardianes del Planeta - Menú")
 clock = pygame.time.Clock()
-background = background.convert()
 
-# Título
-title_img = pygame.image.load(str(title_path)).convert_alpha()
-TITLE_SCALE = 1.35  # 1.0 original, sube para hacerlo más grande
-title_img = pygame.transform.smoothscale(
-    title_img,
-    (int(title_img.get_width()*TITLE_SCALE),
-     int(title_img.get_height()*TITLE_SCALE))
-)
+# Ahora SÍ convertir (ya hay video mode)
+background = bg_raw.convert()
+
+title_raw,  title_path = load_raw(STEMS["title"])
+play_raw,   play_path  = load_raw(STEMS["play"])
+opc_raw,    opc_path   = load_raw(STEMS["opc"])
+inst_raw,   inst_path  = load_raw(STEMS["inst"])
+
+title_img = title_raw.convert_alpha() if title_path.suffix.lower()==".png" else title_raw.convert()
+btn_jugar = play_raw.convert_alpha()  if play_path.suffix.lower()==".png"  else play_raw.convert()
+btn_opc   = opc_raw.convert_alpha()   if opc_path.suffix.lower()==".png"   else opc_raw.convert()
+btn_inst  = inst_raw.convert_alpha()  if inst_path.suffix.lower()==".png"  else inst_raw.convert()
+
+# =========================
+# ESCALADOS (normalizar por ancho)
+# =========================
+TITLE_SCALE = 1.35
+title_img = sscale(title_img, TITLE_SCALE)
 title_w, title_h = title_img.get_size()
 
-# Botones (nota: los .jpeg NO tienen transparencia)
-def load_btn(path, scale=1.2, hover_scale=1.08):
-    img = pygame.image.load(str(path)).convert()  # .jpeg -> sin alpha
-    if scale != 1.0:
-        img = pygame.transform.smoothscale(
-            img, (int(img.get_width()*scale), int(img.get_height()*scale))
-        )
-    w, h = img.get_size()
-    img_hover = pygame.transform.smoothscale(img, (int(w*hover_scale), int(h*hover_scale)))
-    return img, img_hover
+# Ancho objetivo para TODOS los botones (ajústalo a tu gusto)
+TARGET_BTN_W = int(W * 0.28)   # ~28% del ancho de pantalla
+HOVER_SCALE  = 1.08            # hover 8% más grande
 
-btn_jugar, btn_jugar_h = load_btn(jugar_path, 1.2)
-btn_opc,   btn_opc_h   = load_btn(opciones_path, 1.2)
-# Para instrucciones uso convert_alpha() por si tu PNG trae transparencia
-img_inst = pygame.image.load(str(instru_path)).convert_alpha()
-img_inst = pygame.transform.smoothscale(img_inst, (int(img_inst.get_width()*1.2), int(img_inst.get_height()*1.2)))
-btn_inst = img_inst
-btn_inst_h = pygame.transform.smoothscale(img_inst, (int(img_inst.get_width()*1.08), int(img_inst.get_height()*1.08)))
+btn_jugar = scale_to_width(btn_jugar, TARGET_BTN_W)
+btn_opc   = scale_to_width(btn_opc,   TARGET_BTN_W)
+btn_inst  = scale_to_width(btn_inst,  TARGET_BTN_W)
 
+# versiones hover (un poco más anchas, re-centradas al dibujar)
+btn_jugar_h = scale_to_width(btn_jugar, int(TARGET_BTN_W * HOVER_SCALE))
+btn_opc_h   = scale_to_width(btn_opc,   int(TARGET_BTN_W * HOVER_SCALE))
+btn_inst_h  = scale_to_width(btn_inst,  int(TARGET_BTN_W * HOVER_SCALE))
+
+# =========================
+# LAYOUT (centrado y espaciado uniforme)
+# =========================
 j_w, j_h = btn_jugar.get_size()
 o_w, o_h = btn_opc.get_size()
 i_w, i_h = btn_inst.get_size()
 
-# =========================
-# POSICIONES (como tu mockup)
-# =========================
-TITLE_TOP   = int(H * 0.12)   # “padding” superior del título (ajústalo)
-COLUMN_TOP  = int(H * 0.34)   # inicio de la columna de botones
-GAP         = 18              # separación vertical entre botones
+TITLE_TOP  = int(H * 0.12)            # padding superior del título
+start_y    = int(H * 0.44)            # inicio de la columna (debajo del título)
+GAP        = max(16, int(j_h * 0.25)) # separación entre botones (25% de la altura del botón JUGAR)
 
-rect_jugar = btn_jugar.get_rect(center=(W//2, COLUMN_TOP))
-rect_opc   = btn_opc.get_rect(center=(W//2, COLUMN_TOP + j_h + GAP))
-rect_inst  = btn_inst.get_rect(center=(W//2, COLUMN_TOP + j_h + GAP + o_h + GAP))
+rect_jugar = btn_jugar.get_rect(center=(W // 2, start_y))
+rect_opc   = btn_opc.get_rect(center=(W // 2, rect_jugar.bottom + GAP + o_h // 2))
+rect_inst  = btn_inst.get_rect(center=(W // 2, rect_opc.bottom + GAP + i_h // 2))
+
 
 # =========================
 # ANIMACIONES
@@ -82,21 +131,20 @@ FLOAT_AMP   = 8
 FLOAT_SPEED = 0.08
 
 # =========================
-# LOOP
+# LOOP PRINCIPAL
 # =========================
-
 running = True
 while running:
     mouse_pos = pygame.mouse.get_pos()
-    click = False
+    clicked = False
 
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
             running = False
         elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-            click = True
+            clicked = True
 
-    # Fondo en scroll
+    # Fondo con scroll infinito
     scroll_x -= SCROLL_SPEED
     if scroll_x <= -W:
         scroll_x = 0
@@ -107,25 +155,31 @@ while running:
     y_float = int(FLOAT_AMP * math.sin(t * FLOAT_SPEED))
     screen.blit(title_img, ((W - title_w)//2, TITLE_TOP + y_float))
 
-    # Botones con hover
-    def draw_btn(img, img_hover, rect):
-        if rect.collidepoint(mouse_pos):
-            r = img_hover.get_rect(center=rect.center)
-            r.y -= 2
+    # Botones (hover + “saltito”)
+    def draw_btn(img, img_hover, base_rect):
+        if base_rect.collidepoint(mouse_pos):
+            r = img_hover.get_rect(center=base_rect.center)
+            r.y -= 2  # pequeño saltito al pasar
             screen.blit(img_hover, r)
-            return True
+            return r
         else:
-            screen.blit(img, rect)
-            return False
+            screen.blit(img, base_rect)
+            return base_rect
 
-    over_jugar = draw_btn(btn_jugar, btn_jugar_h, rect_jugar)
-    over_opc   = draw_btn(btn_opc,   btn_opc_h,   rect_opc)
-    over_inst  = draw_btn(btn_inst,  btn_inst_h,  rect_inst)
+    rj = draw_btn(btn_jugar, btn_jugar_h, rect_jugar)
+    ro = draw_btn(btn_opc,   btn_opc_h,   rect_opc)
+    ri = draw_btn(btn_inst,  btn_inst_h,  rect_inst)
 
-    if click:
-        if rect_jugar.collidepoint(mouse_pos): print("🎮 JUGAR")
-        elif rect_opc.collidepoint(mouse_pos): print("⚙️ OPCIONES")
-        elif rect_inst.collidepoint(mouse_pos): print("📖 INSTRUCCIONES")
+    if SHOW_DEBUG_BORDERS:
+        pygame.draw.rect(screen, (255, 0, 0), rj, 2)
+        pygame.draw.rect(screen, (0, 255, 0), ro, 2)
+        pygame.draw.rect(screen, (0, 0, 255), ri, 2)
+
+    # Clicks
+    if clicked:
+        if rj.collidepoint(mouse_pos): print("🎮 JUGAR")
+        elif ro.collidepoint(mouse_pos): print("⚙️ OPCIONES")
+        elif ri.collidepoint(mouse_pos): print("📖 INSTRUCCIONES")
 
     pygame.display.flip()
     clock.tick(60)
