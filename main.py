@@ -1,4 +1,5 @@
 import pygame, os, math
+import opciones
 from pathlib import Path
 
 pygame.init()
@@ -87,7 +88,7 @@ btn_inst  = inst_raw.convert_alpha()  if inst_path.suffix.lower()==".png"  else 
 # =========================
 # ESCALADOS (normalizar por ancho)
 # =========================
-TITLE_SCALE = 1.35
+TITLE_SCALE = 1.00
 title_img = sscale(title_img, TITLE_SCALE)
 title_w, title_h = title_img.get_size()
 
@@ -105,20 +106,34 @@ btn_opc_h   = scale_to_width(btn_opc,   int(TARGET_BTN_W * HOVER_SCALE))
 btn_inst_h  = scale_to_width(btn_inst,  int(TARGET_BTN_W * HOVER_SCALE))
 
 # =========================
-# LAYOUT (centrado y espaciado uniforme)
+# LAYOUT (apilado borde-a-borde con gap fijo)
 # =========================
-j_w, j_h = btn_jugar.get_size()
-o_w, o_h = btn_opc.get_size()
-i_w, i_h = btn_inst.get_size()
+TITLE_TOP      = int(H * 0.12)  # sube/baja el título
+GAP_TITLE_BTN  = 20             # espacio título -> primer botón (ajústalo)
+GAP_BOTONES    = 20        # espacio entre botones (igual para todos)
 
-TITLE_TOP  = int(H * 0.12)            # padding superior del título
-start_y    = int(H * 0.44)            # inicio de la columna (debajo del título)
-GAP        = max(16, int(j_h * 0.25)) # separación entre botones (25% de la altura del botón JUGAR)
+# Punto inicial de la columna: justo debajo del título
+start_y = TITLE_TOP + title_h + GAP_TITLE_BTN
 
-rect_jugar = btn_jugar.get_rect(center=(W // 2, start_y))
-rect_opc   = btn_opc.get_rect(center=(W // 2, rect_jugar.bottom + GAP + o_h // 2))
-rect_inst  = btn_inst.get_rect(center=(W // 2, rect_opc.bottom + GAP + i_h // 2))
+# 1) Colocamos JUGAR
+rect_jugar = btn_jugar.get_rect(center=(W // 2, 0))
+rect_jugar.top = start_y  # fijar por borde superior
 
+# 2) Colocamos OPCIONES justo debajo de JUGAR con el mismo gap
+rect_opc = btn_opc.get_rect(center=(W // 2, 0))
+rect_opc.top = rect_jugar.bottom + GAP_BOTONES
+
+# 3) Colocamos INSTRUCCIONES justo debajo de OPCIONES con el mismo gap
+rect_inst = btn_inst.get_rect(center=(W // 2, 0))
+rect_inst.top = rect_opc.bottom + GAP_BOTONES
+
+# (Opcional) Si el último se sale por abajo, subimos toda la columna
+MARGIN_BOTTOM = 8
+overflow = rect_inst.bottom - (H - MARGIN_BOTTOM)
+if overflow > 0:
+    rect_jugar.move_ip(0, -overflow)
+    rect_opc.move_ip(0, -overflow)
+    rect_inst.move_ip(0, -overflow)
 
 # =========================
 # ANIMACIONES
@@ -155,11 +170,11 @@ while running:
     y_float = int(FLOAT_AMP * math.sin(t * FLOAT_SPEED))
     screen.blit(title_img, ((W - title_w)//2, TITLE_TOP + y_float))
 
-    # Botones (hover + “saltito”)
+    # Botones (hover + saltito)
     def draw_btn(img, img_hover, base_rect):
         if base_rect.collidepoint(mouse_pos):
             r = img_hover.get_rect(center=base_rect.center)
-            r.y -= 2  # pequeño saltito al pasar
+            r.y -= 2
             screen.blit(img_hover, r)
             return r
         else:
@@ -175,14 +190,18 @@ while running:
         pygame.draw.rect(screen, (0, 255, 0), ro, 2)
         pygame.draw.rect(screen, (0, 0, 255), ri, 2)
 
-    # Clicks
+    # ⬇⬇⬇ TODO ESTO VA DENTRO DEL WHILE ⬇⬇⬇
     if clicked:
-        if rj.collidepoint(mouse_pos): print("🎮 JUGAR")
-        elif ro.collidepoint(mouse_pos): print("⚙️ OPCIONES")
-        elif ri.collidepoint(mouse_pos): print("📖 INSTRUCCIONES")
+        if rj.collidepoint(mouse_pos):
+            print("🎮 JUGAR")
+        elif ro.collidepoint(mouse_pos):
+            settings = opciones.run(screen, ASSETS)   # ← abre opciones
+            print("Volví del menú de opciones con:", settings)
+        elif ri.collidepoint(mouse_pos):
+            print("📖 INSTRUCCIONES")
 
-    pygame.display.flip()
+    pygame.display.flip()   # ← ¡dentro del while!
     clock.tick(60)
     t += 1
-
+# ⬆⬆⬆ FIN DEL WHILE ⬆⬆⬆
 pygame.quit()
