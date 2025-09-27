@@ -1,5 +1,6 @@
 import pygame, os, math
 import opciones
+import play   
 from pathlib import Path
 
 pygame.init()
@@ -190,10 +191,11 @@ while running:
         pygame.draw.rect(screen, (0, 255, 0), ro, 2)
         pygame.draw.rect(screen, (0, 0, 255), ri, 2)
 
-    # ⬇⬇⬇ TODO ESTO VA DENTRO DEL WHILE ⬇⬇⬇
+    # ⬇⬇⬇ CLICK EVENTS ⬇⬇⬇
     if clicked:
         if rj.collidepoint(mouse_pos):
-            print("🎮 JUGAR")
+            # Abrir PLAY provisional (solo fondo con scroll)
+            _ = play.run(screen, ASSETS)
         elif ro.collidepoint(mouse_pos):
             settings = opciones.run(screen, ASSETS)   # ← abre opciones
             print("Volví del menú de opciones con:", settings)
