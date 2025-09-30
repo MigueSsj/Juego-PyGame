@@ -1,6 +1,6 @@
 import pygame, os, math
 import opciones
-import play                     # <-- importa el módulo play
+import play                     # <-- importa el módulo play+
 from pathlib import Path
 
 pygame.init()
@@ -172,10 +172,17 @@ while running:
         pygame.draw.rect(screen, (0, 255, 0), ro, 2)
         pygame.draw.rect(screen, (0, 0, 255), ri, 2)
 
+
     # Clicks (después de crear rj/ro/ri)
     if clicked:
         if rj.collidepoint(mouse_pos):
             play.run(screen, ASSETS)             # abre pantalla de juego
+    # ⬇⬇⬇ CLICK EVENTS ⬇⬇⬇
+    if clicked:
+        if rj.collidepoint(mouse_pos):
+            # Abrir PLAY provisional (solo fondo con scroll)
+            _ = play.run(screen, ASSETS)
+
         elif ro.collidepoint(mouse_pos):
             settings = opciones.run(screen, ASSETS)  # abre opciones
             print("Volví de OPCIONES:", settings)
@@ -186,4 +193,5 @@ while running:
     clock.tick(60)
     t += 1
 
+# ⬆⬆⬆ FIN DEL WHILE ⬆⬆⬆
 pygame.quit()
