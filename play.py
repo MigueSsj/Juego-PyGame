@@ -109,3 +109,40 @@ def run(screen: pygame.Surface, assets_dir: Path):
             elif e.type == pygame.MOUSEBUTTONDOWN and e.button == 1:
                 click = True  # se detecta click izquierdo
 
+ # --- fondo con scroll infinito ---
+        scroll_x -= SCROLL_SPEED
+        if scroll_x <= -W:
+            scroll_x = 0
+        screen.blit(background, (scroll_x, 0))
+        screen.blit(background, (scroll_x + W, 0))
+
+        # Título
+        screen.blit(title, title_rect)
+
+        # Tarjetas de niveles
+        draw_card(card1, r1, mouse)
+        draw_card(card2, r2, mouse)
+        draw_card(card3, r3, mouse)
+
+        # Botón Back con hover (zoom al pasar el mouse)
+        current_back_rect = None
+        if back_img:
+            if back_rect.collidepoint(mouse):
+                r = back_img_hover.get_rect(center=back_rect.center)  # mantener centrado al hacer zoom
+                screen.blit(back_img_hover, r)
+                current_back_rect = r
+            else:
+                screen.blit(back_img, back_rect)
+                current_back_rect = back_rect
+
+        # Clicks en objetos
+        if click:
+            if r1.collidepoint(mouse): return {"nivel": 1}   # si clic en tarjeta 1 → nivel 1
+            if r2.collidepoint(mouse): return {"nivel": 2}   # si clic en tarjeta 2 → nivel 2
+            if r3.collidepoint(mouse): return {"nivel": 3}   # si clic en tarjeta 3 → nivel 3
+            if current_back_rect and current_back_rect.collidepoint(mouse):
+                return None  # clic en BACK → regresar al menú principal
+
+        # Actualizar pantalla
+        pygame.display.flip()
+        clock.tick(60)  # limitar a 60 FPS
