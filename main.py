@@ -1,6 +1,7 @@
 import pygame, os, math
 import opciones
-import play   
+import play
+import instrucciones   # ← (ya importado)
 from pathlib import Path
 
 pygame.init()
@@ -111,7 +112,7 @@ btn_inst_h  = scale_to_width(btn_inst,  int(TARGET_BTN_W * HOVER_SCALE))
 # =========================
 TITLE_TOP      = int(H * 0.12)  # sube/baja el título
 GAP_TITLE_BTN  = 20             # espacio título -> primer botón (ajústalo)
-GAP_BOTONES    = 20        # espacio entre botones (igual para todos)
+GAP_BOTONES    = 20             # espacio entre botones (igual para todos)
 
 # Punto inicial de la columna: justo debajo del título
 start_y = TITLE_TOP + title_h + GAP_TITLE_BTN
@@ -120,15 +121,15 @@ start_y = TITLE_TOP + title_h + GAP_TITLE_BTN
 rect_jugar = btn_jugar.get_rect(center=(W // 2, 0))
 rect_jugar.top = start_y  # fijar por borde superior
 
-# 2) Colocamos OPCIONES justo debajo de JUGAR con el mismo gap
+# 2) OPCIONES debajo de JUGAR
 rect_opc = btn_opc.get_rect(center=(W // 2, 0))
 rect_opc.top = rect_jugar.bottom + GAP_BOTONES
 
-# 3) Colocamos INSTRUCCIONES justo debajo de OPCIONES con el mismo gap
+# 3) INSTRUCCIONES debajo de OPCIONES
 rect_inst = btn_inst.get_rect(center=(W // 2, 0))
 rect_inst.top = rect_opc.bottom + GAP_BOTONES
 
-# (Opcional) Si el último se sale por abajo, subimos toda la columna
+# Si el último se sale por abajo, subimos toda la columna
 MARGIN_BOTTOM = 8
 overflow = rect_inst.bottom - (H - MARGIN_BOTTOM)
 if overflow > 0:
@@ -194,16 +195,28 @@ while running:
     # ⬇⬇⬇ CLICK EVENTS ⬇⬇⬇
     if clicked:
         if rj.collidepoint(mouse_pos):
+            _ = play.run(screen, ASSETS)                 # Abrir PLAY
+
+    # Clicks (después de crear rj/ro/ri)
+    if clicked:
+        if rj.collidepoint(mouse_pos):
+            play.run(screen, ASSETS)             # abre pantalla de juego
+
+    # ⬇⬇⬇ CLICK EVENTS ⬇⬇⬇
+    if clicked:
+        if rj.collidepoint(mouse_pos):
             # Abrir PLAY provisional (solo fondo con scroll)
             _ = play.run(screen, ASSETS)
+
         elif ro.collidepoint(mouse_pos):
-            settings = opciones.run(screen, ASSETS)   # ← abre opciones
+            settings = opciones.run(screen, ASSETS)      # Abrir OPCIONES
             print("Volví del menú de opciones con:", settings)
         elif ri.collidepoint(mouse_pos):
-            print("📖 INSTRUCCIONES")
+            _ = instrucciones.run(screen, ASSETS)        # ← **ABRIR INSTRUCCIONES**
 
     pygame.display.flip()   # ← ¡dentro del while!
     clock.tick(60)
     t += 1
-# ⬆⬆⬆ FIN DEL WHILE ⬆⬆⬆
+
+
 pygame.quit()
