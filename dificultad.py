@@ -30,10 +30,27 @@ def scale_to_width(img: pygame.Surface, new_w: int) -> pygame.Surface:
     r = new_w / img.get_width()
     return pygame.transform.smoothscale(img, (new_w, int(img.get_height() * r)))
 
+# ======== importar SeleccionPersonajeScreen (raíz o levels/) ========
+def _import_seleccion_clase():
+    try:
+        from seleccion_personaje import SeleccionPersonajeScreen
+        return SeleccionPersonajeScreen
+    except ModuleNotFoundError:
+        # si está dentro de levels/
+        from levels.seleccion_personaje import SeleccionPersonajeScreen
+        return SeleccionPersonajeScreen
+
+def _abrir_seleccion_personaje(screen: pygame.Surface, assets_dir: Path):
+    SeleccionPersonajeScreen = _import_seleccion_clase()
+    print("[DEBUG] Abriendo SeleccionPersonajeScreen…")
+    SeleccionPersonajeScreen(screen, assets_dir).run()
+    print("[DEBUG] Selección de personaje cerrada.")
+
 # ========== PANTALLA DIFICULTAD ==========
 def run(screen: pygame.Surface, assets_dir: Path, nivel: int):
     """
     Selector de dificultad para el nivel dado.
+    UI: 'Normal' -> lógica 'facil'
     Retorna:
       {"dificultad": "facil"}  o  {"dificultad": "dificil"}
     Si el usuario presiona Back, retorna None.
@@ -42,7 +59,7 @@ def run(screen: pygame.Surface, assets_dir: Path, nivel: int):
     W, H = screen.get_size()
 
     # ---- Fondo con scroll ----
-    background = load_image(assets_dir, ["Background_f", "Background_fondo"])
+    background = load_image(assets_dir, ["Background_f", "Background_fondo", "fondo"])
     if not background:
         raise FileNotFoundError("Fondo no encontrado (Background_f*).")
     background = pygame.transform.smoothscale(background, (W, H))
@@ -51,17 +68,18 @@ def run(screen: pygame.Surface, assets_dir: Path, nivel: int):
     SCROLL_SPEED = 2
 
     # ---- Título (imagen si hay, si no texto) ----
-    title_img = load_image(assets_dir, ["title_dificultad", "elige_dificultad", "dificultad"])
-    if title_img:
-        title_img = scale_to_width(title_img, int(W * 0.5))
-        title_rect = title_img.get_rect(center=(W // 2, int(H * 0.18)))
-    else:
+    ASSETS_DIR = Path(__file__).parent / "assets"
+    try:
+        title_img = pygame.image.load(ASSETS_DIR / "elige_dificultad_nivel1.png").convert_alpha()
+        title_img = scale_to_width(title_img, int(W * 0.3))
+    except Exception:
         font_title = pygame.font.SysFont("arial", 48, bold=True)
         title_img = font_title.render(f"Elige dificultad - Nivel {nivel}", True, (255, 255, 255))
-        title_rect = title_img.get_rect(center=(W // 2, int(H * 0.18)))
+    title_rect = title_img.get_rect(center=(W // 2, int(H * 0.18)))
 
-    # ---- Botones de dificultad (imagen o fallback con texto) ----
-    btn_facil_img   = load_image(assets_dir, ["btn_facil", "facil"])
+    # ---- Botones (UI muestra NORMAL y DIFÍCIL) ----
+    # Normal == Fácil en la lógica
+    btn_normal_img  = load_image(assets_dir, ["btn_normal", "normal", "btn_facil", "facil"])
     btn_dificil_img = load_image(assets_dir, ["btn_dificil", "dificil"])
 
     target_w = int(W * 0.26)
@@ -86,15 +104,15 @@ def run(screen: pygame.Surface, assets_dir: Path, nivel: int):
         )
         return base, hover
 
-    facil_base,   facil_hover   = prepare_button(btn_facil_img,   "Fácil")
+    normal_base, normal_hover   = prepare_button(btn_normal_img,  "Normal")
     dificil_base, dificil_hover = prepare_button(btn_dificil_img, "Difícil")
 
-    total_w = facil_base.get_width() + dificil_base.get_width() + gap
+    total_w = normal_base.get_width() + dificil_base.get_width() + gap
     start_x = (W - total_w) // 2
     center_y = int(H * 0.55)
 
-    r_facil   = facil_base.get_rect(midleft=(start_x, center_y))
-    r_dificil = dificil_base.get_rect(midleft=(r_facil.right + gap, center_y))
+    r_normal  = normal_base.get_rect(midleft=(start_x, center_y))
+    r_dificil = dificil_base.get_rect(midleft=(r_normal.right + gap, center_y))
 
     # ---- Botón Back ----
     back_img = load_image(assets_dir, ["btn_back", "regresar", "btn_regresar", "back"])
@@ -127,7 +145,7 @@ def run(screen: pygame.Surface, assets_dir: Path, nivel: int):
         # Título
         screen.blit(title_img, title_rect)
 
-        # Dibujo de botones con hover
+        # Dibujo con hover
         def draw_pair(base_img, hover_img, rect):
             if rect.collidepoint(mouse):
                 r = hover_img.get_rect(center=rect.center)
@@ -136,8 +154,8 @@ def run(screen: pygame.Surface, assets_dir: Path, nivel: int):
             screen.blit(base_img, rect)
             return rect
 
-        rf = draw_pair(facil_base,   facil_hover,   r_facil)
-        rd = draw_pair(dificil_base, dificil_hover, r_dificil)
+        rN = draw_pair(normal_base,  normal_hover,  r_normal)
+        rD = draw_pair(dificil_base, dificil_hover, r_dificil)
 
         # Back con hover
         if back_rect.collidepoint(mouse):
@@ -150,9 +168,11 @@ def run(screen: pygame.Surface, assets_dir: Path, nivel: int):
 
         # Clicks
         if click:
-            if rf.collidepoint(mouse):
-                return {"dificultad": "facil"}
-            if rd.collidepoint(mouse):
+            if rN.collidepoint(mouse):
+                _abrir_seleccion_personaje(screen, assets_dir)   # ← abre selección
+                return {"dificultad": "facil"}                    # ← vuelve a play.py
+            if rD.collidepoint(mouse):
+                _abrir_seleccion_personaje(screen, assets_dir)
                 return {"dificultad": "dificil"}
             if current_back_rect.collidepoint(mouse):
                 return None
