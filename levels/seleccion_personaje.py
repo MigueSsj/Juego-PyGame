@@ -3,6 +3,27 @@ import pygame
 from pathlib import Path
 from typing import Optional
 
+# ===== SFX click =====
+_click_snd: pygame.mixer.Sound | None = None
+def play_click(assets_dir: Path):
+    global _click_snd
+    if _click_snd is None:
+        try:
+            audio_dir = assets_dir / "msuiquita"
+            for stem in ["musica_botoncitos", "click", "boton"]:
+                for ext in (".ogg", ".wav", ".mp3"):
+                    for p in list(audio_dir.glob(f"{stem}{ext}")) + list(audio_dir.glob(f"{stem}*{ext}")):
+                        if not pygame.mixer.get_init(): pygame.mixer.init()
+                        _click_snd = pygame.mixer.Sound(str(p))
+                        _click_snd.set_volume(0.9)
+                        break
+                if _click_snd: break
+        except Exception:
+            _click_snd = None
+    if _click_snd:
+        try: _click_snd.play()
+        except Exception: pass
+
 # ===== helpers =====
 def find_by_stem(assets_dir: Path, stem: str) -> Optional[Path]:
     exts = (".png", ".jpg", ".jpeg")
@@ -20,7 +41,7 @@ def load_image(assets_dir: Path, stems: list[str]) -> Optional[pygame.Surface]:
         p = find_by_stem(assets_dir, stem)
         if p:
             img = pygame.image.load(str(p))
-            return img.convert_alpha() if img.get_alpha() is not None else img.convert()
+            return img.convert_alpha() if p.suffix.lower() == ".png" else img.convert()
     return None
 
 def scale_to_height(img: pygame.Surface, target_h: int) -> tuple[int, int]:
@@ -139,10 +160,15 @@ class SeleccionPersonajeScreen:
             for ev in events:
                 if ev.type == pygame.QUIT: return None
                 if ev.type == pygame.KEYDOWN:
-                    if ev.key in (pygame.K_RETURN, pygame.K_KP_ENTER): return self.personaje_nombre
-                    if ev.key == pygame.K_ESCAPE: return None
+                    if ev.key in (pygame.K_RETURN, pygame.K_KP_ENTER):
+                        play_click(self.assets_dir)
+                        return self.personaje_nombre
+                    if ev.key == pygame.K_ESCAPE:
+                        play_click(self.assets_dir)
+                        return None
 
             if self.btn_confirmar.update(events):
+                play_click(self.assets_dir)
                 return self.personaje_nombre
 
             # DIBUJO
