@@ -20,6 +20,50 @@ STEMS = {
 }
 SHOW_DEBUG_BORDERS = False
 
+# ===== MUSICA DE MENU =====
+def _find_audio_by_stem(assets_dir: Path, stems: list[str]) -> Path | None:
+    """Busca audio en assets/msuiquita/ por nombre exacto o prefijo."""
+    audio_dir = assets_dir / "msuiquita"
+    if not audio_dir.exists():
+        return None
+    exts = (".mp3", ".ogg", ".wav")
+    # exacto
+    for stem in stems:
+        for ext in exts:
+            p = audio_dir / f"{stem}{ext}"
+            if p.exists():
+                return p
+    # prefijo
+    for stem in stems:
+        for ext in exts:
+            cands = list(audio_dir.glob(f"{stem}*{ext}"))
+            if cands:
+                return sorted(cands, key=lambda p: len(p.name))[0]
+    return None
+
+def start_menu_music(assets_dir: Path, volume: float = 0.75) -> None:
+    """Inicia música del menú en loop si existe 'musica inicio.*'."""
+    try:
+        p = _find_audio_by_stem(assets_dir, ["musica inicio", "musica_inicio", "inicio"])
+        if not p:
+            return
+        if not pygame.mixer.get_init():
+            pygame.mixer.init()
+        pygame.mixer.music.load(str(p))
+        pygame.mixer.music.set_volume(max(0.0, min(1.0, volume)))
+        pygame.mixer.music.play(-1)
+        print(f"[MUSICA] Reproduciendo: {p.name}")
+    except Exception as e:
+        print(f"[MUSICA] No se pudo reproducir: {e}")
+
+def ensure_menu_music_running(assets_dir: Path) -> None:
+    """Si no suena, la reinicia (útil al volver del nivel)."""
+    try:
+        if not pygame.mixer.get_init() or not pygame.mixer.music.get_busy():
+            start_menu_music(assets_dir)
+    except Exception:
+        pass
+
 # ===== HELPERS =====
 def find_by_stem(stem: str) -> Path | None:
     exts = (".png", ".jpg", ".jpeg")
@@ -53,7 +97,7 @@ def scale_to_width(img: pygame.Surface, new_w: int) -> pygame.Surface:
 bg_raw, _ = load_raw(STEMS["bg"])
 W, H = bg_raw.get_size()
 screen = pygame.display.set_mode((W, H))
-pygame.display.set_caption("ECORUSH!")
+pygame.display.set_caption("Guardianes del Planeta")
 clock = pygame.time.Clock()
 background = bg_raw.convert()
 
@@ -66,6 +110,12 @@ title_img = title_raw.convert_alpha() if title_path.suffix.lower()==".png" else 
 btn_jugar = play_raw.convert_alpha()  if play_path.suffix.lower()==".png"  else play_raw.convert()
 btn_opc   = opc_raw.convert_alpha()   if opc_path.suffix.lower()==".png"   else opc_raw.convert()
 btn_inst  = inst_raw.convert_alpha()  if inst_path.suffix.lower()==".png"  else inst_raw.convert()
+
+# ===== INICIA MUSICA DE MENU =====
+try:
+    start_menu_music(ASSETS, volume=0.75)
+except Exception as e:
+    print(f"[MUSICA] Mixer no disponible: {e}")
 
 # ===== ESCALADOS =====
 TITLE_SCALE = 1.00
@@ -101,14 +151,14 @@ if overflow > 0:
     rect_opc.move_ip(0, -overflow)
     rect_inst.move_ip(0, -overflow)
 
-# ===== ANIMACIONES =====
+# ===== ANIM =====
 scroll_x = 0
 SCROLL_SPEED = 2
 t = 0
 FLOAT_AMP   = 8
 FLOAT_SPEED = 0.08
 
-# ===== LOOP PRINCIPAL =====
+# ===== LOOP =====
 running = True
 while running:
     mouse_pos = pygame.mouse.get_pos()
@@ -148,27 +198,35 @@ while running:
     # Clicks
     if clicked:
         if rj.collidepoint(mouse_pos):
-            result = play.run(screen, ASSETS)  # selector niveles+dificultad
+            result = play.run(screen, ASSETS)  # selector niveles + dificultad + personaje
 
-            # Despacho a niveles reales
+            # Al volver del selector (o del nivel), si no suena la música, reanúdala:
+            ensure_menu_music_running(ASSETS)
+
             if isinstance(result, dict) and "nivel" in result and "dificultad" in result:
-                nivel = result["nivel"]; dif = result["dificultad"]
+                nivel = result["nivel"]
+                dif = result["dificultad"]
+                personaje = result.get("personaje", "EcoGuardian")
                 if nivel == 1 and dif == "facil":
                     from levels import nivel1_facil as lv
-                    lv.run(screen, ASSETS)
+                    lv.run(screen, ASSETS, personaje=personaje, dificultad="Fácil")
                 elif nivel == 1 and dif == "dificil":
-                    from levels import nivel1_dificil as lv
-                    lv.run(screen, ASSETS)
-                # Aquí añadirás nivel 2/3 si quieres
+                    from levels import nivel1_facil as lv  # temporal
+                    lv.run(screen, ASSETS, personaje=personaje, dificultad="Difícil")
+
+                # Al salir del nivel, nos aseguramos de volver a poner música de menú:
+                ensure_menu_music_running(ASSETS)
 
             pygame.display.flip(); clock.tick(60); t += 1; continue
 
         elif ro.collidepoint(mouse_pos):
             _ = opciones.run(screen, ASSETS)
+            ensure_menu_music_running(ASSETS)
             pygame.display.flip(); clock.tick(60); t += 1; continue
 
         elif ri.collidepoint(mouse_pos):
             _ = instrucciones.run(screen, ASSETS)
+            ensure_menu_music_running(ASSETS)
             pygame.display.flip(); clock.tick(60); t += 1; continue
 
     pygame.display.flip()

@@ -1,3 +1,4 @@
+#instrucciones.py
 import pygame, math
 from pathlib import Path
 

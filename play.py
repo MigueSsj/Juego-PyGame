@@ -1,7 +1,11 @@
 import pygame
 from pathlib import Path
-import dificultad
 
+# --- IMPORT ROBUSTO DE dificultad ---
+try:
+    import dificultad as dificultad
+except ModuleNotFoundError:
+    from levels import dificultad as dificultad
 
 def find_by_stem(assets_dir: Path, stem: str) -> Path | None:
     exts = (".png", ".jpg", ".jpeg")
@@ -24,6 +28,14 @@ def load_image(assets_dir: Path, stems: list[str]) -> pygame.Surface | None:
 def scale_to_width(img: pygame.Surface, new_w: int) -> pygame.Surface:
     r = new_w / img.get_width()
     return pygame.transform.smoothscale(img, (new_w, int(img.get_height()*r)))
+
+def _stop_menu_music():
+    """Apaga (fadeout) la música del menú justo antes de entrar al nivel."""
+    try:
+        if pygame.mixer.get_init():
+            pygame.mixer.music.fadeout(1000)  # 1 segundo
+    except Exception:
+        pass
 
 def run(screen: pygame.Surface, assets_dir: Path):
     clock = pygame.time.Clock()
@@ -95,15 +107,25 @@ def run(screen: pygame.Surface, assets_dir: Path):
             if r1.collidepoint(mouse):
                 choice = dificultad.run(screen, assets_dir, nivel=1)
                 if isinstance(choice, dict) and "dificultad" in choice:
-                    return {"nivel": 1, "dificultad": choice["dificultad"]}
+                    # apagar música del menú antes de entrar al nivel
+                    _stop_menu_music()
+                    return {"nivel": 1,
+                            "dificultad": choice["dificultad"],
+                            "personaje": choice.get("personaje", "EcoGuardian")}
             elif r2.collidepoint(mouse):
                 choice = dificultad.run(screen, assets_dir, nivel=2)
                 if isinstance(choice, dict) and "dificultad" in choice:
-                    return {"nivel": 2, "dificultad": choice["dificultad"]}
+                    _stop_menu_music()
+                    return {"nivel": 2,
+                            "dificultad": choice["dificultad"],
+                            "personaje": choice.get("personaje", "EcoGuardian")}
             elif r3.collidepoint(mouse):
                 choice = dificultad.run(screen, assets_dir, nivel=3)
                 if isinstance(choice, dict) and "dificultad" in choice:
-                    return {"nivel": 3, "dificultad": choice["dificultad"]}
+                    _stop_menu_music()
+                    return {"nivel": 3,
+                            "dificultad": choice["dificultad"],
+                            "personaje": choice.get("personaje", "EcoGuardian")}
             elif current_back_rect.collidepoint(mouse):
                 return None
 

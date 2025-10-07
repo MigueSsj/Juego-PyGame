@@ -1,4 +1,3 @@
-# levels/seleccion_personaje.py
 from __future__ import annotations
 import pygame
 from pathlib import Path
@@ -34,7 +33,7 @@ def scale_to_width(img: pygame.Surface, target_w: int) -> tuple[int, int]:
     h = int(img.get_height() * (w / img.get_width()))
     return (w, h)
 
-# ===== botón compatible con imagen o dibujado =====
+# ===== botón =====
 class Button:
     def __init__(self, rect: pygame.Rect, text: str, font: pygame.font.Font,
                  base_surf: pygame.Surface | None = None,
@@ -62,11 +61,9 @@ class Button:
 
     def draw(self, surface: pygame.Surface):
         if self.base_surf:
-            # botón por imagen
             surf = self.hover_surf if self.is_hover else self.base_surf
             surface.blit(surf, surf.get_rect(center=self.rect.center))
         else:
-            # botón dibujado
             base, hover, press = (30,160,90), (35,190,105), (25,120,70)
             color = press if self.is_pressed else (hover if self.is_hover else base)
             pygame.draw.rect(surface, color, self.rect, border_radius=10)
@@ -82,7 +79,9 @@ class SeleccionPersonajeScreen:
         self.w, self.h = self.screen.get_size()
         self.clock = pygame.time.Clock()
 
-        # Fondo (incluye "fondo" por si tu archivo se llama así)
+        self.PAD_TOP    = int(self.h * 0.08)
+        self.PAD_BOTTOM = int(self.h * 0.08)
+
         self.bg = load_image(assets_dir, ["bg_inicio", "fondo_inicio", "pantalla_inicio", "background_inicio", "fondo"])
         if self.bg is None:
             self.bg = pygame.Surface((self.w, self.h)); self.bg.fill((10,25,40))
@@ -90,115 +89,80 @@ class SeleccionPersonajeScreen:
         self.bg_speed = 40
         self.bg_scaled = pygame.transform.scale(self.bg, scale_to_height(self.bg, self.h))
 
-        # Sprite EcoGuardian (más chico)
         eco = load_image(assets_dir, ["ecoguardian_idle", "ecoguardian", "EcoGuardian", "eco_guardian", "guardian"])
         if eco is None:
             eco = pygame.Surface((64,96), pygame.SRCALPHA)
             eco.fill((0,0,0,0)); pygame.draw.rect(eco, (240,200,0), eco.get_rect()); pygame.draw.rect(eco, (0,0,0), eco.get_rect(), 3)
-        SPRITE_H_RATIO = 0.48  # ← antes ~0.60
+        SPRITE_H_RATIO = 0.30
         target_h = int(self.h * SPRITE_H_RATIO)
         self.eco_big = pygame.transform.scale(eco, scale_to_height(eco, target_h))
 
-        # Fuentes
         pygame.font.init()
         self.font_title = pygame.font.SysFont("Arial", max(28, self.w//18), bold=True)
-        self.font_name  = pygame.font.SysFont("Arial", max(22, self.w//26), bold=True)
         self.font_btn   = pygame.font.SysFont("Arial", max(20, self.w//28), bold=True)
 
-        # Título como imagen (fallback a texto)
-        self.title_img = load_image(self.assets_dir, [
-            "title_personaje", "title_seleccion_personaje",
-            "elige_personaje", "elige_tu_personaje"
-        ])
+        self.title_img = load_image(self.assets_dir, ["title_personaje", "title_seleccion_personaje",
+                                                      "elige_personaje", "elige_tu_personaje"])
         if self.title_img:
             self.title_img = pygame.transform.scale(self.title_img, scale_to_width(self.title_img, int(self.w*0.2)))
-            self.title_rect = self.title_img.get_rect(center=(self.w//2, int(self.h*0.10)))
+            self.title_rect = self.title_img.get_rect(center=(self.w//2, self.PAD_TOP + self.title_img.get_height()//2))
         else:
-            self.title_img = None  # usaremos texto
+            self.title_img = None
 
-        # Botón Confirmar con diseño igual a tus otros botones
         btn_img = load_image(self.assets_dir, ["btn_confirmar", "confirmar", "btn_continuar", "continuar"])
         btn_base = btn_hover = None
-        btn_center = (self.w//2, int(self.h*0.88))
+        btn_center = (self.w//2, self.h - self.PAD_BOTTOM - int(self.h * 0.06))
         if btn_img:
             desired_w = int(self.w * 0.22)
             btn_base = pygame.transform.scale(btn_img, scale_to_width(btn_img, desired_w))
             btn_hover = pygame.transform.scale(btn_img, scale_to_width(btn_img, int(desired_w*1.08)))
             rect = btn_base.get_rect(center=btn_center)
         else:
-            # usamos botón dibujado
             rect = pygame.Rect(0, 0, int(self.w*0.28), int(self.h*0.10))
             rect.center = btn_center
+        if rect.bottom > self.h - self.PAD_BOTTOM:
+            rect.bottom = self.h - self.PAD_BOTTOM
 
         self.btn_confirmar = Button(rect, "Confirmar", self.font_btn, base_surf=btn_base, hover_surf=btn_hover)
         self.personaje_nombre = "EcoGuardian"
 
-    # --- utils ---
     def _draw_scrolling_bg(self, dt: float):
         self.bg_scroll_x = (self.bg_scroll_x - self.bg_speed*dt) % self.bg_scaled.get_width()
         x = -self.bg_scroll_x
         while x < self.w:
             self.screen.blit(self.bg_scaled, (int(x), 0)); x += self.bg_scaled.get_width()
 
-    def run(self) -> None:
-        # IMPORT RELATIVO (funciona dentro de 'levels') + fallback
-        try:
-            from . import nivel1_facil as nivel1_facil
-        except Exception:
-            import nivel1_facil  # fallback si se ejecuta desde la raíz
-
-        running = True
-        while running:
+    def run(self) -> Optional[str]:
+        while True:
             dt = self.clock.tick(60) / 1000.0
             events = pygame.event.get()
             for ev in events:
-                if ev.type == pygame.QUIT:
-                    return
+                if ev.type == pygame.QUIT: return None
                 if ev.type == pygame.KEYDOWN:
-                    if ev.key in (pygame.K_RETURN, pygame.K_KP_ENTER):
-                        return nivel1_facil.run(self.screen, self.assets_dir,
-                                                personaje=self.personaje_nombre, dificultad="Fácil")
-                    if ev.key == pygame.K_ESCAPE:
-                        return
+                    if ev.key in (pygame.K_RETURN, pygame.K_KP_ENTER): return self.personaje_nombre
+                    if ev.key == pygame.K_ESCAPE: return None
 
             if self.btn_confirmar.update(events):
-                return nivel1_facil.run(self.screen, self.assets_dir,
-                                        personaje=self.personaje_nombre, dificultad="Fácil")
+                return self.personaje_nombre
 
             # DIBUJO
             self._draw_scrolling_bg(dt)
 
-            # Título
             if self.title_img:
                 self.screen.blit(self.title_img, self.title_rect)
             else:
+                title_y = self.PAD_TOP + 20
                 title = self.font_title.render("Elige tu personaje", True, (255,255,255))
                 title_o = self.font_title.render("Elige tu personaje", True, (0,0,0))
-                self.screen.blit(title_o, title_o.get_rect(center=(self.w//2+2, int(self.h*0.12)+2)))
-                self.screen.blit(title,   title.get_rect(center=(self.w//2,   int(self.h*0.12))))
+                self.screen.blit(title_o, title_o.get_rect(center=(self.w//2+2, title_y+2)))
+                self.screen.blit(title,   title.get_rect(center=(self.w//2,   title_y)))
 
-            # Sprite centrado (un poco más arriba para que no tape el botón)
-            sprite_rect = self.eco_big.get_rect(center=(self.w//2, int(self.h*0.52)))
+            sprite_center_y = int(self.h * 0.54)
+            sprite_rect = self.eco_big.get_rect(center=(self.w//2, sprite_center_y))
             plate = pygame.Surface((sprite_rect.width+36, sprite_rect.height+36), pygame.SRCALPHA)
             plate.fill((0,0,0,80))
             self.screen.blit(plate, plate.get_rect(center=sprite_rect.center))
             self.screen.blit(self.eco_big, sprite_rect)
 
-            # Nombre debajo
-            name_s = self.font_name.render(self.personaje_nombre, True, (255,230,90))
-            name_o = self.font_name.render(self.personaje_nombre, True, (0,0,0))
-            name_pos = (self.w//2, int(self.h*0.77))
-            self.screen.blit(name_o, name_o.get_rect(center=(name_pos[0]+2, name_pos[1]+2)))
-            self.screen.blit(name_s, name_s.get_rect(center=name_pos))
-
-            # Botón
             self.btn_confirmar.draw(self.screen)
-
             pygame.display.flip()
-
-# (opcional) prueba rápida
-if __name__ == "__main__":
-    pygame.init()
-    scr = pygame.display.set_mode((1280, 720))
-    SeleccionPersonajeScreen(scr, Path(__file__).parent.parent / "assets").run()
-    pygame.quit()
