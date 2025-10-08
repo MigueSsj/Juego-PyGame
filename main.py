@@ -1,3 +1,4 @@
+# main.py
 import pygame, os, math
 import opciones
 import play
@@ -67,7 +68,7 @@ def get_click_sound(assets_dir: Path) -> pygame.mixer.Sound | None:
         if not pygame.mixer.get_init():
             pygame.mixer.init()
         _click_snd = pygame.mixer.Sound(str(p))
-        _click_snd.set_volume(0.9)
+        _click_snd.set_volume(0.2)  # volumen suave del “sonidito”
     except Exception as e:
         print(f"[SFX] No se pudo cargar el click: {e}")
         _click_snd = None
@@ -128,7 +129,7 @@ btn_inst  = inst_raw.convert_alpha()  if inst_path.suffix.lower()==".png"  else 
 
 # ===== INICIA MÚSICA DE MENÚ =====
 start_menu_music(ASSETS, volume=0.75)
-get_click_sound(ASSETS)  # pre-carga
+get_click_sound(ASSETS)  # pre-carga sfx
 
 # ===== ESCALADOS =====
 TITLE_SCALE = 1.00

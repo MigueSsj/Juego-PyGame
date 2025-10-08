@@ -3,26 +3,34 @@ import pygame, math, random
 from pathlib import Path
 from typing import Optional
 
-# ====== SFX click ======
+# ====== SFX click (VOLÚMEN AJUSTABLE) ======
+CLICK_VOL = 0.25   # <-- AJUSTA AQUÍ (0.0 = mudo, 1.0 = máximo)
+
 _click_snd: pygame.mixer.Sound | None = None
+
 def play_click(assets_dir: Path):
+    """Reproduce el sfx de click con el volumen global CLICK_VOL."""
     global _click_snd
-    if _click_snd is None:
-        try:
+    try:
+        if _click_snd is None:
             audio_dir = assets_dir / "msuiquita"
+            # Busca "musica_botoncitos.*" (o variantes)
             for stem in ["musica_botoncitos", "click", "boton"]:
                 for ext in (".ogg", ".wav", ".mp3"):
                     for p in list(audio_dir.glob(f"{stem}{ext}")) + list(audio_dir.glob(f"{stem}*{ext}")):
-                        if not pygame.mixer.get_init(): pygame.mixer.init()
+                        if not pygame.mixer.get_init():
+                            pygame.mixer.init()
                         _click_snd = pygame.mixer.Sound(str(p))
-                        _click_snd.set_volume(0.9)
                         break
-                if _click_snd: break
-        except Exception:
-            _click_snd = None
-    if _click_snd:
-        try: _click_snd.play()
-        except Exception: pass
+                if _click_snd:
+                    break
+
+        if _click_snd:
+            _click_snd.set_volume(max(0.0, min(1.0, float(CLICK_VOL))))
+            _click_snd.play()
+    except Exception:
+        pass
+
 
 # ---------- helpers ----------
 def find_by_stem(assets_dir: Path, stem: str) -> Optional[Path]:
@@ -347,8 +355,34 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str = "EcoGuardian"
                 play_click(assets_dir)
                 return None
 
-        # VICTORIA
+        # === VICTORIA (pantalla win_level1) ===
         if not paused and delivered >= total_trash:
+            # Intentar cargar la imagen de victoria
+            win_img = None
+            p = find_by_stem(assets_dir, "win_level1")
+            if p:
+                img = pygame.image.load(str(p))
+                win_img = img.convert_alpha() if p.suffix.lower() == ".png" else img.convert()
+                win_img = pygame.transform.smoothscale(win_img, (W, H))
+
+            if win_img:
+                screen.blit(win_img, (0, 0))
+                pygame.display.flip()
+
+                # Espera input o timeout para evitar “freeze”
+                elapsed = 0.0
+                while elapsed < 2.5:
+                    dt2 = clock.tick(60) / 1000.0
+                    elapsed += dt2
+                    for ev in pygame.event.get():
+                        if ev.type == pygame.QUIT:
+                            return {"estado": "completado", "recolectadas": total_trash}
+                        if ev.type == pygame.KEYDOWN or (ev.type == pygame.MOUSEBUTTONDOWN and ev.button == 1):
+                            play_click(assets_dir)
+                            return {"estado": "completado", "recolectadas": total_trash}
+                return {"estado": "completado", "recolectadas": total_trash}
+
+            # Fallback si no hay imagen
             win = pygame.Surface((W, H), pygame.SRCALPHA)
             win.fill((0, 120, 0, 90))
             screen.blit(win, (0, 0))

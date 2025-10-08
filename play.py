@@ -7,28 +7,34 @@ try:
 except ModuleNotFoundError:
     from levels import dificultad as dificultad
 
-# ====== SFX click ======
+# ====== SFX click (VOLÚMEN AJUSTABLE) ======
+CLICK_VOL = 0.25   # <-- AJUSTA AQUÍ (0.0 = mudo, 1.0 = máximo)
+
 _click_snd: pygame.mixer.Sound | None = None
-def _find_click(assets_dir: Path) -> pygame.mixer.Sound | None:
+
+def play_click(assets_dir: Path):
+    """Reproduce el sfx de click con el volumen global CLICK_VOL."""
     global _click_snd
-    if _click_snd is not None: return _click_snd
     try:
-        audio_dir = assets_dir / "msuiquita"
-        for stem in ["musica_botoncitos", "click", "boton"]:
-            for ext in (".ogg", ".wav", ".mp3"):
-                for p in list(audio_dir.glob(f"{stem}{ext}")) + list(audio_dir.glob(f"{stem}*{ext}")):
-                    if not pygame.mixer.get_init(): pygame.mixer.init()
-                    _click_snd = pygame.mixer.Sound(str(p))
-                    _click_snd.set_volume(0.9)
-                    return _click_snd
+        if _click_snd is None:
+            audio_dir = assets_dir / "msuiquita"
+            # Busca "musica_botoncitos.*" (o variantes)
+            for stem in ["musica_botoncitos", "click", "boton"]:
+                for ext in (".ogg", ".wav", ".mp3"):
+                    for p in list(audio_dir.glob(f"{stem}{ext}")) + list(audio_dir.glob(f"{stem}*{ext}")):
+                        if not pygame.mixer.get_init():
+                            pygame.mixer.init()
+                        _click_snd = pygame.mixer.Sound(str(p))
+                        break
+                if _click_snd:
+                    break
+
+        if _click_snd:
+            _click_snd.set_volume(max(0.0, min(1.0, float(CLICK_VOL))))
+            _click_snd.play()
     except Exception:
         pass
-    return None
-def play_click(assets_dir: Path):
-    snd = _find_click(assets_dir)
-    if snd:
-        try: snd.play()
-        except Exception: pass
+
 
 def find_by_stem(assets_dir: Path, stem: str) -> Path | None:
     exts = (".png", ".jpg", ".jpeg")
