@@ -1,13 +1,29 @@
-# dificultad.py
-# -----------------------------------------------------------------------------
-# Pantalla de selección de dificultad
-# -----------------------------------------------------------------------------
-
 from __future__ import annotations
 import pygame
 from pathlib import Path
 from typing import Optional
 import importlib, importlib.util
+
+# ====== SFX click ======
+_click_snd: pygame.mixer.Sound | None = None
+def play_click(assets_dir: Path):
+    global _click_snd
+    if _click_snd is None:
+        try:
+            audio_dir = assets_dir / "msuiquita"
+            for stem in ["musica_botoncitos", "click", "boton"]:
+                for ext in (".ogg", ".wav", ".mp3"):
+                    for p in list(audio_dir.glob(f"{stem}{ext}")) + list(audio_dir.glob(f"{stem}*{ext}")):
+                        if not pygame.mixer.get_init(): pygame.mixer.init()
+                        _click_snd = pygame.mixer.Sound(str(p))
+                        _click_snd.set_volume(0.9)
+                        break
+                if _click_snd: break
+        except Exception:
+            _click_snd = None
+    if _click_snd:
+        try: _click_snd.play()
+        except Exception: pass
 
 # ===== Helpers =====
 def find_by_stem(assets_dir: Path, stem: str) -> Optional[Path]:
@@ -33,7 +49,7 @@ def scale_to_width(img: pygame.Surface, new_w: int) -> pygame.Surface:
     r = new_w / img.get_width()
     return pygame.transform.smoothscale(img, (new_w, int(img.get_height() * r)))
 
-# ===== Import robusto: SeleccionPersonajeScreen =====
+# ===== Import Selección =====
 def _import_seleccion_clase():
     try:
         from seleccion_personaje import SeleccionPersonajeScreen as Cls
@@ -44,7 +60,6 @@ def _import_seleccion_clase():
         mod = importlib.import_module("levels.seleccion_personaje")
         if hasattr(mod, "SeleccionPersonajeScreen"):
             return getattr(mod, "SeleccionPersonajeScreen")
-        raise ImportError("levels.seleccion_personaje no define 'SeleccionPersonajeScreen'")
     except Exception:
         pass
     base = Path(__file__).resolve().parent
@@ -56,19 +71,15 @@ def _import_seleccion_clase():
             spec.loader.exec_module(mod)  # type: ignore[union-attr]
             if hasattr(mod, "SeleccionPersonajeScreen"):
                 return getattr(mod, "SeleccionPersonajeScreen")
-            raise ImportError(f"{p} existe pero no define 'SeleccionPersonajeScreen'")
-    raise ModuleNotFoundError(
-        "No se encontró seleccion_personaje.py en raíz ni en /levels/. "
-        "Crea levels/__init__.py y coloca levels/seleccion_personaje.py."
-    )
+    raise ModuleNotFoundError("No se encontró seleccion_personaje.py en raíz ni en /levels/.")
 
-def _abrir_seleccion_personaje(screen: pygame.Surface, assets_dir: Path):
+def _abrir_seleccion_personaje(screen: pygame.Surface, assets_dir: Path) -> Optional[str]:
     SeleccionPersonajeScreen = _import_seleccion_clase()
-    SeleccionPersonajeScreen(screen, assets_dir).run()
+    return SeleccionPersonajeScreen(screen, assets_dir).run()  # ← retorna nombre o None
 
-# ===== Pantalla =====
-def run(screen: pygame.Surface, assets_dir: Path, nivel: int = 1):
-    """Devuelve {'dificultad': 'facil'|'dificil'} o None si Back."""
+# ===== Pantalla Dificultad =====
+def run(screen: pygame.Surface, assets_dir: Path, nivel: int = 1, *args, **kwargs):
+    """Devuelve {'dificultad': 'facil'|'dificil', 'personaje': <str>} o None si Back."""
     clock = pygame.time.Clock()
     W, H = screen.get_size()
 
@@ -77,8 +88,7 @@ def run(screen: pygame.Surface, assets_dir: Path, nivel: int = 1):
         raise FileNotFoundError("Fondo no encontrado (Background_f*).")
     background = pygame.transform.smoothscale(background, (W, H))
     bw = background.get_width()
-    scroll_x = 0
-    SCROLL_SPEED = 2
+    scroll_x = 0; SCROLL_SPEED = 2
 
     title_img = load_image(assets_dir, [f"elige_dificultad_nivel{nivel}", "elige_dificultad", "title_dificultad"])
     if title_img:
@@ -147,12 +157,21 @@ def run(screen: pygame.Surface, assets_dir: Path, nivel: int = 1):
 
         if click:
             if rN.collidepoint(mouse):
-                _abrir_seleccion_personaje(screen, assets_dir)
-                return {"dificultad": "facil"}
+                play_click(assets_dir)
+                nombre = _abrir_seleccion_personaje(screen, assets_dir)
+                if nombre is None:  # cancelado
+                    return None
+                return {"dificultad": "facil", "personaje": nombre}
+
             if rD.collidepoint(mouse):
-                _abrir_seleccion_personaje(screen, assets_dir)
-                return {"dificultad": "dificil"}
+                play_click(assets_dir)
+                nombre = _abrir_seleccion_personaje(screen, assets_dir)
+                if nombre is None:
+                    return None
+                return {"dificultad": "dificil", "personaje": nombre}
+
             if current_back_rect.collidepoint(mouse):
+                play_click(assets_dir)
                 return None
 
         pygame.display.flip()

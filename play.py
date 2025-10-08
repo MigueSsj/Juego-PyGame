@@ -7,6 +7,29 @@ try:
 except ModuleNotFoundError:
     from levels import dificultad as dificultad
 
+# ====== SFX click ======
+_click_snd: pygame.mixer.Sound | None = None
+def _find_click(assets_dir: Path) -> pygame.mixer.Sound | None:
+    global _click_snd
+    if _click_snd is not None: return _click_snd
+    try:
+        audio_dir = assets_dir / "msuiquita"
+        for stem in ["musica_botoncitos", "click", "boton"]:
+            for ext in (".ogg", ".wav", ".mp3"):
+                for p in list(audio_dir.glob(f"{stem}{ext}")) + list(audio_dir.glob(f"{stem}*{ext}")):
+                    if not pygame.mixer.get_init(): pygame.mixer.init()
+                    _click_snd = pygame.mixer.Sound(str(p))
+                    _click_snd.set_volume(0.9)
+                    return _click_snd
+    except Exception:
+        pass
+    return None
+def play_click(assets_dir: Path):
+    snd = _find_click(assets_dir)
+    if snd:
+        try: snd.play()
+        except Exception: pass
+
 def find_by_stem(assets_dir: Path, stem: str) -> Path | None:
     exts = (".png", ".jpg", ".jpeg")
     for ext in exts:
@@ -30,10 +53,9 @@ def scale_to_width(img: pygame.Surface, new_w: int) -> pygame.Surface:
     return pygame.transform.smoothscale(img, (new_w, int(img.get_height()*r)))
 
 def _stop_menu_music():
-    """Apaga (fadeout) la música del menú justo antes de entrar al nivel."""
     try:
         if pygame.mixer.get_init():
-            pygame.mixer.music.fadeout(1000)  # 1 segundo
+            pygame.mixer.music.fadeout(400)
     except Exception:
         pass
 
@@ -105,14 +127,15 @@ def run(screen: pygame.Surface, assets_dir: Path):
 
         if click:
             if r1.collidepoint(mouse):
+                play_click(assets_dir)
                 choice = dificultad.run(screen, assets_dir, nivel=1)
                 if isinstance(choice, dict) and "dificultad" in choice:
-                    # apagar música del menú antes de entrar al nivel
                     _stop_menu_music()
                     return {"nivel": 1,
                             "dificultad": choice["dificultad"],
                             "personaje": choice.get("personaje", "EcoGuardian")}
             elif r2.collidepoint(mouse):
+                play_click(assets_dir)
                 choice = dificultad.run(screen, assets_dir, nivel=2)
                 if isinstance(choice, dict) and "dificultad" in choice:
                     _stop_menu_music()
@@ -120,6 +143,7 @@ def run(screen: pygame.Surface, assets_dir: Path):
                             "dificultad": choice["dificultad"],
                             "personaje": choice.get("personaje", "EcoGuardian")}
             elif r3.collidepoint(mouse):
+                play_click(assets_dir)
                 choice = dificultad.run(screen, assets_dir, nivel=3)
                 if isinstance(choice, dict) and "dificultad" in choice:
                     _stop_menu_music()
@@ -127,6 +151,7 @@ def run(screen: pygame.Surface, assets_dir: Path):
                             "dificultad": choice["dificultad"],
                             "personaje": choice.get("personaje", "EcoGuardian")}
             elif current_back_rect.collidepoint(mouse):
+                play_click(assets_dir)
                 return None
 
         pygame.display.flip()
