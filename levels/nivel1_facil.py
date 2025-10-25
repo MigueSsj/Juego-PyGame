@@ -1,11 +1,11 @@
+# levels/nivel1_facil.py
 from __future__ import annotations
-import pygame, math, random
+import pygame, math, random, re
 from pathlib import Path
 from typing import Optional
 
 # ====== SFX click (VOLÚMEN AJUSTABLE) ======
 CLICK_VOL = 0.25   # <-- AJUSTA AQUÍ (0.0 = mudo, 1.0 = máximo)
-
 _click_snd: pygame.mixer.Sound | None = None
 
 def play_click(assets_dir: Path):
@@ -14,7 +14,6 @@ def play_click(assets_dir: Path):
     try:
         if _click_snd is None:
             audio_dir = assets_dir / "msuiquita"
-            # Busca "musica_botoncitos.*" (o variantes)
             for stem in ["musica_botoncitos", "click", "boton"]:
                 for ext in (".ogg", ".wav", ".mp3"):
                     for p in list(audio_dir.glob(f"{stem}{ext}")) + list(audio_dir.glob(f"{stem}*{ext}")):
@@ -24,7 +23,6 @@ def play_click(assets_dir: Path):
                         break
                 if _click_snd:
                     break
-
         if _click_snd:
             _click_snd.set_volume(max(0.0, min(1.0, float(CLICK_VOL))))
             _click_snd.play()
@@ -61,9 +59,9 @@ def scale_to_width(img: pygame.Surface, new_w: int) -> pygame.Surface:
 
 def make_glow(radius: int) -> pygame.Surface:
     s = pygame.Surface((radius * 2, radius * 2), pygame.SRCALPHA)
-    for r in range(radius, 0, -1):
-        a = max(5, int(180 * (r / radius) ** 2))
-        pygame.draw.circle(s, (255, 255, 120, a), (radius, radius), r)
+    for rr in range(radius, 0, -1):
+        a = max(5, int(180 * (rr / radius) ** 2))
+        pygame.draw.circle(s, (255, 255, 120, a), (radius, radius), rr)
     return s
 
 def load_bg(assets_dir: Path, W: int, H: int) -> pygame.Surface:
@@ -81,65 +79,178 @@ def load_trash_images(assets_dir: Path) -> list[pygame.Surface]:
         imgs.append(s.convert_alpha() if p.suffix.lower() == ".png" else s)
     return imgs
 
-def load_char_frames(assets_dir: Path, target_h: int) -> dict[str, list[pygame.Surface]]:
-    right = [load_surface(p) for p in find_many_by_prefix(assets_dir, "ecoguardian_walk_right")]
-    left  = [load_surface(p) for p in find_many_by_prefix(assets_dir, "ecoguardian_walk_left")]
-    if not right and not left:
-        one = None
-        for stem in ["ecoguardian_idle", "ecoguardian", "EcoGuardian", "eco_guardian", "guardian", "player", "personaje"]:
-            p = find_by_stem(assets_dir, stem)
-            if p:
-                one = load_surface(p); break
-        if not one:
-            one = pygame.Surface((60, 90), pygame.SRCALPHA)
-            pygame.draw.rect(one, (250, 210, 90), one.get_rect(), border_radius=6)
-        left  = [pygame.transform.flip(one, True, False)]
-        right = [one]
+
+# === CARGA DE FRAMES DESDE /assets/PERSONAJE H/ ============================
+def load_char_frames(assets_dir: Path, target_h: int) -> dict[str, list[pygame.Surface] | pygame.Surface]:
+    """
+    Carga animaciones desde: assets/PERSONAJE H/
+    Walk: ecoguardian_walk_<dir>_1..4.png
+    Idle opcional: ecoguardian_<dir>_idle.png (down/right/up; left se espeja si no existe)
+    """
+    char_dir = assets_dir / "PERSONAJE H"
+    if not char_dir.exists():
+        raise FileNotFoundError("No se encontró la carpeta 'assets/PERSONAJE H'")
+
+    def _load_seq(prefix: str) -> list[pygame.Surface]:
+        files: list[Path] = []
+        for ext in (".png", ".jpg", ".jpeg"):
+            files += list(char_dir.glob(f"{prefix}_[0-9]*{ext}"))
+        def _num(p: Path) -> int:
+            m = re.search(r"_(\d+)\.\w+$", p.name)
+            return int(m.group(1)) if m else 0
+        files.sort(key=_num)
+        seq: list[pygame.Surface] = []
+        for p in files:
+            img = pygame.image.load(str(p))
+            seq.append(img.convert_alpha() if p.suffix.lower()==".png" else img.convert())
+        return seq
+
+    def _load_idle(name: str) -> Optional[pygame.Surface]:
+        for ext in (".png", ".jpg", ".jpeg"):
+            p = char_dir / f"{name}{ext}"
+            if p.exists():
+                img = pygame.image.load(str(p))
+                return img.convert_alpha() if p.suffix.lower()==".png" else img.convert()
+        return None
+
+    right = _load_seq("ecoguardian_walk_right")
+    left  = _load_seq("ecoguardian_walk_left")
+    down  = _load_seq("ecoguardian_walk_down")
+    up    = _load_seq("ecoguardian_walk_up")
+
+    idle_right = _load_idle("ecoguardian_right_idle")
+    idle_left  = _load_idle("ecoguardian_left_idle")
+    idle_down  = _load_idle("ecoguardian_down_idle")
+    idle_up    = _load_idle("ecoguardian_up_idle")
+
     if right and not left:
         left = [pygame.transform.flip(f, True, False) for f in right]
     if left and not right:
         right = [pygame.transform.flip(f, True, False) for f in left]
-    def scale_list(lst): 
-        return [pygame.transform.smoothscale(f, (int(f.get_width()*(target_h/f.get_height())), target_h)) for f in lst]
-    return {"right": scale_list(right), "left": scale_list(left)}
+    if not down: down = right[:1] if right else []
+    if not up:   up   = right[:1] if right else []
+
+    if idle_right is None and right:
+        idle_right = right[0]
+    if idle_left is None and idle_right is not None:
+        idle_left = pygame.transform.flip(idle_right, True, False)
+    if idle_down is None and down:
+        idle_down = down[0]
+    if idle_up is None and up:
+        idle_up = up[0]
+
+    def _scale(f: pygame.Surface) -> pygame.Surface:
+        h = target_h
+        w = int(f.get_width() * (h / f.get_height()))
+        return pygame.transform.smoothscale(f, (w, h))
+
+    def _scale_list(seq: list[pygame.Surface]) -> list[pygame.Surface]:
+        return [_scale(f) for f in seq]
+
+    def _normalize(seq: list[pygame.Surface]) -> list[pygame.Surface]:
+        if not seq: return seq
+        max_w = max(f.get_width() for f in seq)
+        H = seq[0].get_height()
+        out = []
+        for f in seq:
+            canvas = pygame.Surface((max_w, H), pygame.SRCALPHA)
+            rect = f.get_rect(midbottom=(max_w//2, H))
+            canvas.blit(f, rect)
+            out.append(canvas)
+        return out
+
+    def _normalize_single(s: pygame.Surface) -> pygame.Surface:
+        S = _scale(s)
+        canvas = pygame.Surface((S.get_width(), S.get_height()), pygame.SRCALPHA)
+        rect = S.get_rect(midbottom=(canvas.get_width()//2, canvas.get_height()))
+        canvas.blit(S, rect)
+        return canvas
+
+    right = _normalize(_scale_list(right))
+    left  = _normalize(_scale_list(left))
+    down  = _normalize(_scale_list(down))
+    up    = _normalize(_scale_list(up))
+
+    if idle_right: idle_right = _normalize_single(idle_right)
+    if idle_left:  idle_left  = _normalize_single(idle_left)
+    if idle_down:  idle_down  = _normalize_single(idle_down)
+    if idle_up:    idle_up    = _normalize_single(idle_up)
+
+    return {
+        "right": right, "left": left, "down": down, "up": up,
+        "idle_right": idle_right, "idle_left": idle_left,
+        "idle_down": idle_down, "idle_up": idle_up
+    }
+
 
 # ---------- entidades ----------
 class Player(pygame.sprite.Sprite):
-    def __init__(self, frames: dict[str, list[pygame.Surface]], pos, bounds: pygame.Rect, speed: float = 320):
+    def __init__(self, frames: dict[str, list[pygame.Surface] | pygame.Surface], pos, bounds: pygame.Rect,
+                 speed: float = 320, anim_fps: float = 8.0):
         super().__init__()
         self.frames = frames
-        self.dir = "right"
+        self.dir = "down"
         self.frame_idx = 0
         self.anim_timer = 0.0
-        self.anim_speed = 0.12
-        self.image = self.frames[self.dir][0]
+        self.anim_dt = 1.0 / max(1.0, anim_fps)
+        idle = self.frames.get("idle_down")
+        start_img = idle if isinstance(idle, pygame.Surface) else (self.frames["down"][0] if self.frames["down"] else pygame.Surface((40,60), pygame.SRCALPHA))
+        self.image = start_img  # type: ignore[assignment]
         self.rect = self.image.get_rect(center=pos)
         self.speed = speed
         self.bounds = bounds
 
     def handle_input(self, dt: float):
         k = pygame.key.get_pressed()
-        dx = dy = 0
-        if k[pygame.K_a] or k[pygame.K_LEFT]:  dx -= 1
-        if k[pygame.K_d] or k[pygame.K_RIGHT]: dx += 1
-        if k[pygame.K_w] or k[pygame.K_UP]:    dy -= 1
-        if k[pygame.K_s] or k[pygame.K_DOWN]:  dy += 1
-        moving = (dx or dy)
+        dx = (k[pygame.K_d] or k[pygame.K_RIGHT]) - (k[pygame.K_a] or k[pygame.K_LEFT])
+        dy = (k[pygame.K_s] or k[pygame.K_DOWN])  - (k[pygame.K_w] or k[pygame.K_UP])
+
+        moving = (dx != 0 or dy != 0)
+
         if moving:
-            if dx > 0: self.dir = "right"
-            elif dx < 0: self.dir = "left"
+            # Normaliza
             l = math.hypot(dx, dy)
             dx, dy = dx / l, dy / l
+
+            # *** Corregido: invertimos L/R porque tus sprites están al revés ***
+            if abs(dx) >= abs(dy):
+                self.dir = "left" if dx > 0 else "right"   # <--- invertido a propósito
+            else:
+                self.dir = "down" if dy > 0 else "up"
+
+            # Movimiento
             self.rect.x += int(dx * self.speed * dt)
             self.rect.y += int(dy * self.speed * dt)
             self.rect.clamp_ip(self.bounds)
+
+            # Animación caminar
             self.anim_timer += dt
-            if self.anim_timer >= self.anim_speed:
-                self.anim_timer = 0.0
-                self.frame_idx = (self.frame_idx + 1) % len(self.frames[self.dir])
+            if self.anim_timer >= self.anim_dt:
+                self.anim_timer -= self.anim_dt
+                seq: list[pygame.Surface] = self.frames.get(self.dir, [])  # type: ignore[assignment]
+                if seq:
+                    self.frame_idx = (self.frame_idx + 1) % len(seq)
+
+            seq: list[pygame.Surface] = self.frames.get(self.dir, [])  # type: ignore[assignment]
+            if seq:
+                self.image = seq[self.frame_idx % len(seq)]
+
         else:
+            # Idle
+            idle_key = f"idle_{self.dir}"
+            idle_img = self.frames.get(idle_key)
+            if isinstance(idle_img, pygame.Surface):
+                self.image = idle_img
+            else:
+                seq: list[pygame.Surface] = self.frames.get(self.dir, [])  # type: ignore[assignment]
+                self.image = seq[0] if seq else self.image
             self.frame_idx = 0
-        self.image = self.frames[self.dir][self.frame_idx]
+
+        # *** Corregido: mantener el midbottom NUEVO (después de mover) ***
+        new_midbottom = self.rect.midbottom
+        self.rect = self.image.get_rect(midbottom=new_midbottom)
+        self.rect.clamp_ip(self.bounds)
+
 
 class Trash(pygame.sprite.Sprite):
     def __init__(self, img: pygame.Surface, pos, scale_w: int):
@@ -149,6 +260,7 @@ class Trash(pygame.sprite.Sprite):
         self.glow = make_glow(int(max(self.rect.width, self.rect.height) * 0.9))
         self.carried = False
         self.phase = random.uniform(0, math.tau)
+
     def draw(self, surface: pygame.Surface, t: float):
         if not self.carried:
             pul = (math.sin(t + self.phase) + 1) * 0.5
@@ -158,7 +270,8 @@ class Trash(pygame.sprite.Sprite):
             surface.blit(g, g.get_rect(center=self.rect.center))
         surface.blit(self.image, self.rect)
 
-# ---------- nivel principal ----------
+
+# ---------- NIVEL PRINCIPAL ----------
 def run(screen: pygame.Surface, assets_dir: Path, personaje: str = "EcoGuardian", dificultad: str = "Fácil"):
     pygame.font.init()
     clock = pygame.time.Clock()
@@ -168,7 +281,7 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str = "EcoGuardian"
     W, H = screen.get_size()
     background = load_bg(assets_dir, W, H)
 
-    # Botón back
+    # Botón Back
     back_p = find_by_stem(assets_dir, "btn_back") or find_by_stem(assets_dir, "back")
     if back_p:
         back_img = load_surface(back_p).convert_alpha()
@@ -210,7 +323,7 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str = "EcoGuardian"
 
     # Personaje
     frames = load_char_frames(assets_dir, target_h=int(H * 0.16))
-    player = Player(frames, (int(W * 0.16), int(H * 0.75)), pygame.Rect(0, 0, W, H))
+    player = Player(frames, (int(W * 0.16), int(H * 0.75)), pygame.Rect(0, 0, W, H), speed=320, anim_fps=8.0)
 
     carrying: Optional[Trash] = None
     delivered = 0
@@ -233,7 +346,7 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str = "EcoGuardian"
         delivered = 0
 
     while True:
-        dt = clock.tick(60) / 1000.0
+        dt = min(clock.tick(60) / 1000.0, 0.033)
         t += dt
         interact = False
 
@@ -257,12 +370,10 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str = "EcoGuardian"
         if not paused:
             player.handle_input(dt)
 
-            # mantener basura cargada
             if carrying:
                 carrying.carried = True
                 carrying.rect.center = (player.rect.centerx, player.rect.top + carrying.rect.height // 2 - 6)
 
-            # Interacción recoger/depositar
             if interact:
                 if not carrying:
                     nearest = None
@@ -357,7 +468,6 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str = "EcoGuardian"
 
         # === VICTORIA (pantalla win_level1) ===
         if not paused and delivered >= total_trash:
-            # Intentar cargar la imagen de victoria
             win_img = None
             p = find_by_stem(assets_dir, "win_level1")
             if p:
@@ -368,8 +478,6 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str = "EcoGuardian"
             if win_img:
                 screen.blit(win_img, (0, 0))
                 pygame.display.flip()
-
-                # Espera input o timeout para evitar “freeze”
                 elapsed = 0.0
                 while elapsed < 2.5:
                     dt2 = clock.tick(60) / 1000.0
@@ -382,7 +490,7 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str = "EcoGuardian"
                             return {"estado": "completado", "recolectadas": total_trash}
                 return {"estado": "completado", "recolectadas": total_trash}
 
-            # Fallback si no hay imagen
+            # Fallback si no hay imagen de victoria
             win = pygame.Surface((W, H), pygame.SRCALPHA)
             win.fill((0, 120, 0, 90))
             screen.blit(win, (0, 0))
