@@ -31,22 +31,22 @@ def play_click(assets_dir: Path):
 
 
 # ---------- helpers ----------
-def find_by_stem(assets_dir: Path, stem: str) -> Optional[Path]:
+def find_by_stem(folder: Path, stem: str) -> Optional[Path]:
     exts = (".png", ".jpg", ".jpeg")
     for ext in exts:
-        p = assets_dir / f"{stem}{ext}"
+        p = folder / f"{stem}{ext}"
         if p.exists():
             return p
     cands = []
     for ext in exts:
-        cands += list(assets_dir.glob(f"{stem}*{ext}"))
+        cands += list(folder.glob(f"{stem}*{ext}"))
     return min(cands, key=lambda p: len(p.name)) if cands else None
 
-def find_many_by_prefix(assets_dir: Path, prefix: str) -> list[Path]:
+def find_many_by_prefix(folder: Path, prefix: str) -> list[Path]:
     exts = (".png", ".jpg", ".jpeg")
     out: list[Path] = []
     for ext in exts:
-        out += sorted(assets_dir.glob(f"{prefix}*{ext}"))
+        out += sorted(folder.glob(f"{prefix}*{ext}"))
     return out
 
 def load_surface(p: Path) -> pygame.Surface:
@@ -208,22 +208,19 @@ class Player(pygame.sprite.Sprite):
         moving = (dx != 0 or dy != 0)
 
         if moving:
-            # Normaliza
             l = math.hypot(dx, dy)
             dx, dy = dx / l, dy / l
 
-            # *** Corregido: invertimos L/R porque tus sprites están al revés ***
+            # Invertido L/R si tus sprites están al revés
             if abs(dx) >= abs(dy):
-                self.dir = "left" if dx > 0 else "right"   # <--- invertido a propósito
+                self.dir = "left" if dx > 0 else "right"
             else:
                 self.dir = "down" if dy > 0 else "up"
 
-            # Movimiento
             self.rect.x += int(dx * self.speed * dt)
             self.rect.y += int(dy * self.speed * dt)
             self.rect.clamp_ip(self.bounds)
 
-            # Animación caminar
             self.anim_timer += dt
             if self.anim_timer >= self.anim_dt:
                 self.anim_timer -= self.anim_dt
@@ -236,7 +233,6 @@ class Player(pygame.sprite.Sprite):
                 self.image = seq[self.frame_idx % len(seq)]
 
         else:
-            # Idle
             idle_key = f"idle_{self.dir}"
             idle_img = self.frames.get(idle_key)
             if isinstance(idle_img, pygame.Surface):
@@ -246,7 +242,6 @@ class Player(pygame.sprite.Sprite):
                 self.image = seq[0] if seq else self.image
             self.frame_idx = 0
 
-        # *** Corregido: mantener el midbottom NUEVO (después de mover) ***
         new_midbottom = self.rect.midbottom
         self.rect = self.image.get_rect(midbottom=new_midbottom)
         self.rect.clamp_ip(self.bounds)
@@ -334,6 +329,36 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str = "EcoGuardian"
     paused = False
     t = 0.0
 
+    # === CARGA UI PAUSA DESDE assets/PAUSA/ ===
+    pausa_dir = assets_dir / "PAUSA"
+
+    def _load_btn_img(stem: str, max_w: int, max_h: int):
+        """Carga btn por stem desde assets/PAUSA con hover escalado."""
+        p = find_by_stem(pausa_dir, stem)
+        if not p:
+            return None, None
+        img = load_surface(p)
+        s = img.copy()
+        ratio = min(max_w / s.get_width(), max_h / s.get_height(), 1.0)
+        s = pygame.transform.smoothscale(s, (int(s.get_width() * ratio), int(s.get_height() * ratio)))
+        hs = pygame.transform.smoothscale(s, (int(s.get_width() * 1.08), int(s.get_height() * 1.08)))
+        return s, hs
+
+    # Panel/fondo de la pausa (tu imagen grande)
+    pausa_panel_img = None
+    for nm in ["nivelA 2", "panel_pausa", "pausa_panel"]:
+        ptex = find_by_stem(pausa_dir, nm)
+        if ptex:
+            pausa_panel_img = load_surface(ptex)
+            break
+
+    # Diccionario con imágenes de botones
+    pausa_imgs = {
+        "continuar": {"base": None, "hover": None},  # "inicio lm"
+        "reiniciar": {"base": None, "hover": None},  # "reinicio lm"
+        "menu":      {"base": None, "hover": None},  # "house"
+    }
+
     def reset_level():
         nonlocal trash_group, carrying, delivered
         trash_group.empty()
@@ -420,49 +445,67 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str = "EcoGuardian"
             txt = font.render("Menú", True, (10, 10, 10))
             screen.blit(txt, txt.get_rect(center=back_rect.center))
 
-        # PAUSA
+        # === PAUSA (usa assets/PAUSA/) ===
         if paused:
+            # oscurecer
             overlay = pygame.Surface((W, H), pygame.SRCALPHA)
-            overlay.fill((0, 0, 0, 140))
+            overlay.fill((0, 0, 0, 160))
             screen.blit(overlay, (0, 0))
 
+            # panel centrado
             panel_w, panel_h = int(W * 0.52), int(H * 0.52)
-            btn_w, btn_h = int(panel_w * 0.70), int(panel_h * 0.17)
             panel = pygame.Rect(W//2 - panel_w//2, H//2 - panel_h//2, panel_w, panel_h)
-            pygame.draw.rect(screen, (30, 20, 15), panel, border_radius=16)
-            inner = panel.inflate(-10, -10)
-            pygame.draw.rect(screen, (210, 180, 140), inner, border_radius=14)
 
+            if pausa_panel_img:
+                # Escalar tu imagen de panel para que ocupe el rectángulo
+                panel_scaled = pygame.transform.smoothscale(pausa_panel_img, (panel_w, panel_h))
+                screen.blit(panel_scaled, panel)
+            else:
+                # Fallback minimal
+                pygame.draw.rect(screen, (30, 20, 15), panel, border_radius=16)
+                inner = panel.inflate(-10, -10)
+                pygame.draw.rect(screen, (210, 180, 140), inner, border_radius=14)
+
+            # título (opcional, tu panel ya lo tiene; lo dejamos por si no)
             title = big.render("PAUSA", True, (25, 20, 15))
-            screen.blit(title, title.get_rect(midtop=(W//2, inner.top + 20)))
+            screen.blit(title, title.get_rect(midtop=(W//2, panel.top + 20)))
 
+            # Slots donde van tus imágenes de botones
+            btn_w, btn_h = int(panel_w * 0.70), int(panel_h * 0.17)
             cx = W // 2
-            start_y = inner.top + int(panel_h * 0.28)
+            start_y = panel.top + int(panel_h * 0.28)
             gap = int(panel_h * 0.06)
             r_cont    = pygame.Rect(0, 0, btn_w, btn_h); r_cont.center    = (cx, start_y)
             r_restart = pygame.Rect(0, 0, btn_w, btn_h); r_restart.center = (cx, start_y + btn_h + gap)
             r_menu    = pygame.Rect(0, 0, btn_w, btn_h); r_menu.center    = (cx, start_y + (btn_h + gap) * 2)
 
+            # Cargar imágenes de botones (una sola vez)
+            if pausa_imgs["continuar"]["base"] is None:
+                max_w = int(btn_w * 0.92)
+                max_h = int(btn_h * 0.85)
+                pausa_imgs["continuar"]["base"], pausa_imgs["continuar"]["hover"] = _load_btn_img("inicio lm", max_w, max_h)
+                pausa_imgs["reiniciar"]["base"],  pausa_imgs["reiniciar"]["hover"]  = _load_btn_img("reinicio lm", max_w, max_h)
+                pausa_imgs["menu"]["base"],       pausa_imgs["menu"]["hover"]       = _load_btn_img("house", max_w, max_h)
+
             mouse = pygame.mouse.get_pos()
             click = pygame.mouse.get_pressed()[0]
 
-            def draw_btn(rect: pygame.Rect, label: str) -> bool:
+            def draw_btn(rect: pygame.Rect, key: str) -> bool:
+                """Dibuja SOLO la imagen del botón centrada en su slot (sin cajas)."""
                 hov = rect.collidepoint(mouse)
-                pygame.draw.rect(screen, (30, 20, 15), rect, border_radius=16)
-                pygame.draw.rect(screen, (225, 190, 145) if hov else (205, 170, 125),
-                                 rect.inflate(-8, -8), border_radius=14)
-                lbl = pygame.font.SysFont("arial", max(28, int(H * 0.03)), bold=True).render(label, True, (25, 20, 15))
-                screen.blit(lbl, lbl.get_rect(center=rect.center))
+                img = pausa_imgs[key]["hover"] if hov and pausa_imgs[key]["hover"] else pausa_imgs[key]["base"]
+                if img:
+                    screen.blit(img, img.get_rect(center=rect.center))
                 return hov and click
 
-            if draw_btn(r_cont, "Continuar"):
+            if draw_btn(r_cont, "continuar"):
                 play_click(assets_dir)
                 paused = False
-            elif draw_btn(r_restart, "Reiniciar"):
+            elif draw_btn(r_restart, "reiniciar"):
                 play_click(assets_dir)
                 reset_level()
                 paused = False
-            elif draw_btn(r_menu, "Menú"):
+            elif draw_btn(r_menu, "menu"):
                 play_click(assets_dir)
                 return None
 
