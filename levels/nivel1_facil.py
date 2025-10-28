@@ -266,6 +266,32 @@ class Trash(pygame.sprite.Sprite):
         surface.blit(self.image, self.rect)
 
 
+# === NUEVO: punto de anclaje para llevar la basura (panza/manos) ==========
+def _carry_anchor(player: pygame.sprite.Sprite, carrying: pygame.sprite.Sprite) -> tuple[int, int]:
+    """
+    Devuelve el punto (cx, cy) donde se sostiene la basura:
+    a la altura de la panza/manos, con leve desplazamiento según dirección.
+    """
+    rect = player.rect
+    cx, cy = rect.centerx, rect.centery
+
+    # Altura panza/manos
+    cy = rect.centery + int(rect.height * 0.08)
+
+    # Ajuste según dirección
+    d = getattr(player, "dir", "down")
+    if d == "left":
+        cx -= int(rect.width * 0.12)
+    elif d == "right":
+        cx += int(rect.width * 0.12)
+    elif d == "up":
+        cy -= int(rect.height * 0.02)
+    else:  # down
+        cy += int(rect.height * 0.02)
+
+    return cx, cy
+
+
 # ---------- NIVEL PRINCIPAL ----------
 def run(screen: pygame.Surface, assets_dir: Path, personaje: str = "EcoGuardian", dificultad: str = "Fácil"):
     pygame.font.init()
@@ -397,7 +423,8 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str = "EcoGuardian"
 
             if carrying:
                 carrying.carried = True
-                carrying.rect.center = (player.rect.centerx, player.rect.top + carrying.rect.height // 2 - 6)
+                # === NUEVO: posición del objeto cargado a la altura de la panza/manos
+                carrying.rect.center = _carry_anchor(player, carrying)
 
             if interact:
                 if not carrying:
@@ -466,11 +493,11 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str = "EcoGuardian"
                 inner = panel.inflate(-10, -10)
                 pygame.draw.rect(screen, (210, 180, 140), inner, border_radius=14)
 
-            # título (opcional, tu panel ya lo tiene; lo dejamos por si no)
+            # título (opcional)
             title = big.render("PAUSA", True, (25, 20, 15))
             screen.blit(title, title.get_rect(midtop=(W//2, panel.top + 20)))
 
-            # Slots donde van tus imágenes de botones
+            # Slots de botones
             btn_w, btn_h = int(panel_w * 0.70), int(panel_h * 0.17)
             cx = W // 2
             start_y = panel.top + int(panel_h * 0.28)

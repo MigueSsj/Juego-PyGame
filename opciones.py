@@ -1,7 +1,7 @@
 # opciones.py
-import json
 from pathlib import Path
 import pygame
+from audio_shared import load_master_volume, set_music_volume_now, save_master_volume, play_click
 
 # =========================
 # Helpers mínimos locales (tuyos)
@@ -32,30 +32,27 @@ def scale_to_width(img: pygame.Surface, new_w: int) -> pygame.Surface:
     return pygame.transform.smoothscale(img, (new_w, int(img.get_height()*r)))
 
 # =========================
-# Persistencia de ajustes
+# Persistencia simple de idioma (sin JSON)
 # =========================
-DEFAULT_SETTINGS = {"volume": 0.6, "lang": "es"}
+# Guardaremos SOLO el idioma en un archivo de texto: assets/../lang.txt
+def _lang_path_from_assets(assets_dir: Path) -> Path:
+    return assets_dir.parent / "lang.txt"
 
-def _settings_path_from_assets(assets_dir: Path) -> Path:
-    # Se guarda al lado de la carpeta assets (raíz del proyecto)
-    return assets_dir.parent / "settings.json"
-
-def load_settings(assets_dir: Path) -> dict:
-    f = _settings_path_from_assets(assets_dir)
-    if f.exists():
-        try:
-            data = json.loads(f.read_text(encoding="utf-8"))
-            return {**DEFAULT_SETTINGS, **data}
-        except Exception:
-            pass
-    return DEFAULT_SETTINGS.copy()
-
-def save_settings(assets_dir: Path, data: dict) -> None:
-    f = _settings_path_from_assets(assets_dir)
+def load_lang(assets_dir: Path) -> str:
+    p = _lang_path_from_assets(assets_dir)
     try:
-        f.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
+        if p.exists():
+            s = p.read_text(encoding="utf-8").strip().lower()
+            return "en" if s == "en" else "es"
     except Exception:
-        pass  # no romper el juego si no se puede guardar
+        pass
+    return "es"
+
+def save_lang(assets_dir: Path, code: str) -> None:
+    try:
+        _lang_path_from_assets(assets_dir).write_text(code, encoding="utf-8")
+    except Exception:
+        pass
 
 # =========================
 # Widgets simples (pixel style)
@@ -74,18 +71,14 @@ class Button:
         self.hover_scale = hover_scale
 
     def draw(self, surf: pygame.Surface):
-        # Vamos a dibujar el botón en una surface temporal del tamaño base
         temp = pygame.Surface(self.rect.size, pygame.SRCALPHA)
-
         outline = (30, 20, 15)
         bg = (205, 170, 125) if not self.hover else (225, 190, 145)
 
-        # Dibuja caja solo si frame=True
         if self.frame:
             pygame.draw.rect(temp, outline, temp.get_rect())
             pygame.draw.rect(temp, bg, temp.get_rect().inflate(-6, -6))
 
-        # imagen centrada (opcional)
         if self.img:
             img = self.img
             max_w = int(self.rect.w * (0.7 if self.frame else 0.9))
@@ -97,7 +90,6 @@ class Button:
             img_rect = img.get_rect(center=(self.rect.w//2, int(self.rect.h//2 + y_offset)))
             temp.blit(img, img_rect)
 
-        # texto
         label = self.font.render(self.text, True, (25, 20, 15))
         if self.img:
             label_rect = label.get_rect(center=(self.rect.w//2, int(self.rect.h*0.72)))
@@ -105,7 +97,6 @@ class Button:
             label_rect = label.get_rect(center=(self.rect.w//2, self.rect.h//2))
         temp.blit(label, label_rect)
 
-        # Hover zoom (igual idea que tu back)
         if self.hover and self.hover_scale != 1.0:
             w = max(1, int(self.rect.w * self.hover_scale))
             h = max(1, int(self.rect.h * self.hover_scale))
@@ -181,7 +172,6 @@ TXT = {
 }
 
 def _load_font(assets_dir: Path, size: int) -> pygame.font.Font:
-    # Si tienes una fuente pixel en assets (p.ej. PressStart2P.ttf), úsala.
     candidates = ["pixel_font", "PressStart2P", "VT323"]
     for st in candidates:
         p = find_by_stem(assets_dir, st)
@@ -193,20 +183,11 @@ def _load_font(assets_dir: Path, size: int) -> pygame.font.Font:
 # Pantalla de OPCIONES
 # =========================
 def run(screen: pygame.Surface, assets_dir: Path):
-    """
-    Pantalla de OPCIONES:
-    - Fondo con scroll infinito.
-    - Slider de volumen (mouse y ← →).
-    - Botones de idioma grandes SIN marco + hover zoom.
-    - Ajustes persistentes en settings.json.
-    Devuelve un dict con settings actualizados.
-    """
     clock = pygame.time.Clock()
     W, H = screen.get_size()
 
-    # Cargar settings actuales
-    settings = load_settings(assets_dir)
-    lang = settings["lang"]
+    # Idioma desde archivo de texto
+    lang = load_lang(assets_dir)
 
     # Fondo con scroll
     background = load_image(assets_dir, ["Background_f", "Background_fondo"])
@@ -227,9 +208,10 @@ def run(screen: pygame.Surface, assets_dir: Path):
     label_font = _load_font(assets_dir, 54)
     btn_font = _load_font(assets_dir, 40)
 
-    # Slider de volumen (centrado)
+    # Slider de volumen (centrado) — usa volumen maestro
     slider_w, slider_h = int(W*0.45), 28
-    slider = Slider((W-slider_w)//2, int(H*0.36), slider_w, slider_h, settings["volume"])
+    vol_inicial = load_master_volume(assets_dir)
+    slider = Slider((W-slider_w)//2, int(H*0.36), slider_w, slider_h, vol_inicial)
 
     # Banderas (opcionales)
     flag_es = None
@@ -244,10 +226,14 @@ def run(screen: pygame.Surface, assets_dir: Path):
         pass
 
     # Botones de idioma GRANDES, sin marco y con hover_scale
-    bw_lang, bh_lang = int(W*0.40), int(H*0.32)  # ← más grandes
+    bw_lang, bh_lang = int(W*0.40), int(H*0.32)
     gap = int(W*0.07)
     left_x = (W - (bw_lang*2 + gap))//2
     y_lang = int(H*0.58)
+
+    def set_lang(code: str):
+        nonlocal lang
+        lang = code
 
     btn_es = Button(
         pygame.Rect(left_x, y_lang, bw_lang, bh_lang),
@@ -262,24 +248,11 @@ def run(screen: pygame.Surface, assets_dir: Path):
         img=flag_us, frame=False, hover_scale=1.35
     )
 
-    def set_lang(code: str):
-        nonlocal lang
-        lang = code
-        btn_es.text = TXT[lang]["spanish"]
-        btn_en.text = TXT[lang]["english"]
-
-    # Aplicar volumen al mixer desde el inicio (si hay mixer)
-    try:
-        pygame.mixer.music.set_volume(slider.value)
-    except Exception:
-        pass
-
     run._running = True
     while run._running:
         mouse = pygame.mouse.get_pos()
         clicked = False
 
-        # --- Eventos ---
         for e in pygame.event.get():
             if e.type == pygame.QUIT:
                 pygame.quit()
@@ -299,20 +272,17 @@ def run(screen: pygame.Surface, assets_dir: Path):
             btn_es.handle(e)
             btn_en.handle(e)
 
-        # aplicar volumen si cambió
-        try:
-            pygame.mixer.music.set_volume(slider.value)
-        except Exception:
-            pass
+        # aplicar volumen maestro a música (y guardar en volume.txt)
+        set_music_volume_now(assets_dir, slider.value)
 
-        # --- Fondo con scroll infinito ---
+        # Fondo con scroll infinito
         scroll_x -= SCROLL_SPEED
         if scroll_x <= -bw:
             scroll_x = 0
         screen.blit(background, (scroll_x, 0))
         screen.blit(background, (scroll_x + bw, 0))
 
-        # --- Títulos/labels ---
+        # Títulos/labels
         title_s = title_font.render(TXT[lang]["title"], True, (20, 15, 10))
         screen.blit(title_s, title_s.get_rect(midtop=(W//2, int(H*0.05))))
         vol_s = label_font.render(TXT[lang]["volume"], True, (20, 15, 10))
@@ -320,12 +290,12 @@ def run(screen: pygame.Surface, assets_dir: Path):
         lang_s = label_font.render(TXT[lang]["language"], True, (20, 15, 10))
         screen.blit(lang_s, lang_s.get_rect(midtop=(W//2, int(H*0.48))))
 
-        # --- UI ---
+        # UI
         slider.draw(screen)
         btn_es.draw(screen)
         btn_en.draw(screen)
 
-        # Botón Back (imagen con hover zoom, el tuyo)
+        # Back con hover zoom
         back_draw_rect = back_img.get_rect(bottomleft=(margin_x, H - margin_y))
         if back_draw_rect.collidepoint(mouse):
             r = back_img_hover.get_rect(center=back_draw_rect.center)
@@ -335,15 +305,14 @@ def run(screen: pygame.Surface, assets_dir: Path):
             screen.blit(back_img, back_draw_rect)
             current_back_rect = back_draw_rect
 
-        # Click explícito sobre imagen Back (tu comportamiento original)
         if clicked and current_back_rect.collidepoint(mouse):
             run._running = False
 
         pygame.display.flip()
         clock.tick(60)
 
-    # Guardar y devolver ajustes
-    settings["volume"] = round(slider.value, 3)
-    settings["lang"] = lang
-    save_settings(assets_dir, settings)
-    return settings
+    # Guardar idioma + volumen maestro
+    save_lang(assets_dir, lang)
+    save_master_volume(assets_dir, slider.value)
+    # Devolver algo compatible si alguien lo espera:
+    return {"volume": round(slider.value, 3), "lang": lang}
