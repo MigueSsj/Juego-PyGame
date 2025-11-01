@@ -161,12 +161,16 @@ while running:
                 nivel = result["nivel"]
                 dif = result["dificultad"]
                 personaje = result.get("personaje", "EcoGuardian")
+
                 if nivel == 1 and dif == "facil":
                     from levels import nivel1_facil as lv
                     lv.run(screen, ASSETS, personaje=personaje, dificultad="Fácil")
+
                 elif nivel == 1 and dif == "dificil":
-                    from levels import nivel1_facil as lv  # temporal
+                    # ← ahora sí usa el módulo difícil real con temporizador y 12 objetos
+                    from levels import nivel1_dificil as lv
                     lv.run(screen, ASSETS, personaje=personaje, dificultad="Difícil")
+
                 ensure_menu_music_running(ASSETS)
 
             pygame.display.flip(); clock.tick(60); t += 1; continue

@@ -1,18 +1,23 @@
 # audio_shared.py
 from __future__ import annotations
-import pygame
+import pygame, os
 from pathlib import Path
 
-# ===== Config =====
-_DEFAULT_VOL = 0.6
-_CLICK_STEMS = ["musica_botoncitos", "click", "boton"]
-_MUSIC_STEMS = ["musica inicio", "musica_inicio", "inicio"]
+# ---------- util rutas ----------
+def _find_audio(assets_dir: Path, stems: list[str]) -> Path | None:
+    audio_dir = assets_dir / "msuiquita"
+    if not audio_dir.exists():
+        return None
+    for stem in stems:
+        for ext in (".ogg", ".wav", ".mp3"):
+            # match exact y con sufijos
+            for p in list(audio_dir.glob(f"{stem}{ext}")) + list(audio_dir.glob(f"{stem}*{ext}")):
+                return p
+    return None
 
-_click_snd: pygame.mixer.Sound | None = None
-
-# ---------- utils volumen (archivo de texto) ----------
+# ---------- persistencia volumen maestro (0..1) ----------
 def _vol_path(assets_dir: Path) -> Path:
-    # Guarda en la raíz del proyecto, al lado de assets/
+    # ya usabas esto desde opciones.py
     return assets_dir.parent / "volume.txt"
 
 def load_master_volume(assets_dir: Path) -> float:
@@ -23,87 +28,116 @@ def load_master_volume(assets_dir: Path) -> float:
             return max(0.0, min(1.0, v))
     except Exception:
         pass
-    return _DEFAULT_VOL
+    return 0.7
 
 def save_master_volume(assets_dir: Path, v: float) -> None:
-    v = max(0.0, min(1.0, float(v)))
     try:
-        _vol_path(assets_dir).write_text(f"{v:.3f}", encoding="utf-8")
+        _vol_path(assets_dir).write_text(str(max(0.0, min(1.0, float(v)))), encoding="utf-8")
     except Exception:
         pass
 
-# ---------- helpers audio ----------
-def _find_audio(assets_dir: Path, stems: list[str], exts=(".ogg",".wav",".mp3")) -> Path | None:
-    audio_dir = assets_dir / "msuiquita"
-    if not audio_dir.exists(): return None
-    # exacto
-    for st in stems:
-        for ext in exts:
-            p = audio_dir / f"{st}{ext}"
-            if p.exists(): return p
-    # prefijo
-    for st in stems:
-        for ext in exts:
-            cands = sorted(audio_dir.glob(f"{st}*{ext}"), key=lambda p: len(p.name))
-            if cands: return cands[0]
-    return None
-
+# ---------- mixer ----------
 def _ensure_mixer():
     if not pygame.mixer.get_init():
+        pygame.mixer.pre_init(44100, -16, 2, 256)
         pygame.mixer.init()
+        pygame.mixer.set_num_channels(24)
 
-# ---------- música ----------
+# ---------- Música de menú ----------
+_menu_loaded_src: str | None = None
+
 def start_menu_music(assets_dir: Path) -> None:
-    """Arranca la música de menú al volumen maestro actual."""
+    """Inicia música de menú en loop respetando volumen maestro."""
     try:
-        p = _find_audio(assets_dir, _MUSIC_STEMS)
-        if not p:
-            return
         _ensure_mixer()
-        pygame.mixer.music.load(str(p))
-        pygame.mixer.music.set_volume(load_master_volume(assets_dir))
-        pygame.mixer.music.play(-1)
+        vol = load_master_volume(assets_dir)
+        pygame.mixer.music.set_volume(vol)
+
+        # Busca alguna pista razonable de menú
+        cand = _find_audio(assets_dir, [
+            "musica_menu", "menu_music", "bg_menu", "fondo_menu", "musica_inicio"
+        ])
+        if cand is None:
+            return
+        global _menu_loaded_src
+        if _menu_loaded_src != str(cand):
+            pygame.mixer.music.load(str(cand))
+            _menu_loaded_src = str(cand)
+        if not pygame.mixer.music.get_busy():
+            pygame.mixer.music.play(-1)
     except Exception:
         pass
 
 def ensure_menu_music_running(assets_dir: Path) -> None:
+    """Si la música no suena, volver a iniciarla."""
     try:
-        if not pygame.mixer.get_init() or not pygame.mixer.music.get_busy():
+        if not pygame.mixer.get_init():
+            start_menu_music(assets_dir); return
+        if not pygame.mixer.music.get_busy():
             start_menu_music(assets_dir)
-        else:
-            pygame.mixer.music.set_volume(load_master_volume(assets_dir))
     except Exception:
         pass
 
 def set_music_volume_now(assets_dir: Path, v: float) -> None:
-    """Ajusta y guarda el volumen maestro; aplica a la música si está sonando."""
-    save_master_volume(assets_dir, v)
+    """Ajusta en caliente el volumen de la música y lo mantiene en la sesión."""
     try:
-        if pygame.mixer.get_init():
-            pygame.mixer.music.set_volume(v)
-    except Exception:
-        pass
-
-# ---------- click ----------
-def _ensure_click_loaded(assets_dir: Path):
-    global _click_snd
-    if _click_snd is not None:
-        return
-    try:
-        p = _find_audio(assets_dir, _CLICK_STEMS)
-        if not p:
-            return
         _ensure_mixer()
-        _click_snd = pygame.mixer.Sound(str(p))
-    except Exception:
-        _click_snd = None
-
-def play_click(assets_dir: Path):
-    """Reproduce el click usando SIEMPRE el volumen maestro actual."""
-    try:
-        _ensure_click_loaded(assets_dir)
-        if _click_snd:
-            _click_snd.set_volume(load_master_volume(assets_dir))
-            _click_snd.play()
+        v = max(0.0, min(1.0, float(v)))
+        pygame.mixer.music.set_volume(v)
     except Exception:
         pass
+
+# ---------- Banco SFX ----------
+_sfx_cache: dict[str, pygame.mixer.Sound] = {}
+_sfx_volume: float = 0.7   # se sincroniza con volumen maestro
+
+# keys → posibles nombres de archivo
+_SFX_STEMS = {
+    "back":   ["btn_back", "back", "regresar"],
+    "select": ["musica_botoncitos", "click", "boton", "btn_select", "select"],
+    "easy":   ["modo_facil", "btn_facil", "facil"],
+    "hard":   ["modo_dificil", "btn_dificil", "dificil"],
+}
+
+def _load_sfx_key(key: str, assets_dir: Path) -> pygame.mixer.Sound | None:
+    if key in _sfx_cache:
+        return _sfx_cache[key]
+    stems = _SFX_STEMS.get(key, [])
+    p = _find_audio(assets_dir, stems)
+    if p is None:
+        return None
+    try:
+        _ensure_mixer()
+        snd = pygame.mixer.Sound(str(p))
+        snd.set_volume(_sfx_volume)
+        _sfx_cache[key] = snd
+        return snd
+    except Exception:
+        return None
+
+def set_sfx_volume_now(assets_dir: Path, v: float) -> None:
+    """Ajusta el volumen de todos los SFX cacheados y sincroniza con maestro."""
+    try:
+        global _sfx_volume
+        _sfx_volume = max(0.0, min(1.0, float(v)))
+        # aplica a los ya cargados
+        for snd in _sfx_cache.values():
+            try: snd.set_volume(_sfx_volume)
+            except Exception: pass
+    except Exception:
+        pass
+
+def play_sfx(key: str, assets_dir: Path) -> None:
+    """Reproduce un SFX mapeado ('back'|'select'|'easy'|'hard')."""
+    try:
+        snd = _load_sfx_key(key, assets_dir)
+        if snd:
+            snd.set_volume(_sfx_volume)  # por si cambió en caliente
+            snd.play()
+    except Exception:
+        pass
+
+# Compat con tu código existente
+def play_click(assets_dir: Path) -> None:
+    """Alias legacy: usar el SFX 'select'."""
+    play_sfx("select", assets_dir)

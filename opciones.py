@@ -1,7 +1,13 @@
 # opciones.py
 from pathlib import Path
 import pygame
-from audio_shared import load_master_volume, set_music_volume_now, save_master_volume, play_click
+from audio_shared import (
+    load_master_volume,
+    set_music_volume_now,
+    save_master_volume,
+    play_click,
+    set_sfx_volume_now,   # <<< NUEVO: sincroniza volumen de SFX
+)
 
 # =========================
 # Helpers mínimos locales (tuyos)
@@ -261,6 +267,8 @@ def run(screen: pygame.Surface, assets_dir: Path):
                 clicked = True
             elif e.type == pygame.KEYDOWN:
                 if e.key in (pygame.K_ESCAPE, pygame.K_BACKSPACE):
+                    # Sonido back por teclado
+                    play_click(assets_dir)
                     run._running = False
                 if e.key == pygame.K_LEFT:
                     slider.value = max(0.0, slider.value - 0.05)
@@ -272,8 +280,9 @@ def run(screen: pygame.Surface, assets_dir: Path):
             btn_es.handle(e)
             btn_en.handle(e)
 
-        # aplicar volumen maestro a música (y guardar en volume.txt)
-        set_music_volume_now(assets_dir, slider.value)
+        # >>> Volumen maestro en caliente
+        set_music_volume_now(assets_dir, slider.value)   # Música
+        set_sfx_volume_now(assets_dir, slider.value)     # SFX  <<< NUEVO
 
         # Fondo con scroll infinito
         scroll_x -= SCROLL_SPEED
@@ -306,6 +315,8 @@ def run(screen: pygame.Surface, assets_dir: Path):
             current_back_rect = back_draw_rect
 
         if clicked and current_back_rect.collidepoint(mouse):
+            # Sonido back por click en botón
+            play_click(assets_dir)
             run._running = False
 
         pygame.display.flip()

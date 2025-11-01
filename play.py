@@ -1,40 +1,13 @@
+# play.py
 import pygame
 from pathlib import Path
+from audio_shared import play_sfx  # <<< SFX compartidos (select/back)
 
 # --- IMPORT ROBUSTO DE dificultad ---
 try:
     import dificultad as dificultad
 except ModuleNotFoundError:
     from levels import dificultad as dificultad
-
-# ====== SFX click (VOLÚMEN AJUSTABLE) ======
-CLICK_VOL = 0.25   # <-- AJUSTA AQUÍ (0.0 = mudo, 1.0 = máximo)
-
-_click_snd: pygame.mixer.Sound | None = None
-
-def play_click(assets_dir: Path):
-    """Reproduce el sfx de click con el volumen global CLICK_VOL."""
-    global _click_snd
-    try:
-        if _click_snd is None:
-            audio_dir = assets_dir / "msuiquita"
-            # Busca "musica_botoncitos.*" (o variantes)
-            for stem in ["musica_botoncitos", "click", "boton"]:
-                for ext in (".ogg", ".wav", ".mp3"):
-                    for p in list(audio_dir.glob(f"{stem}{ext}")) + list(audio_dir.glob(f"{stem}*{ext}")):
-                        if not pygame.mixer.get_init():
-                            pygame.mixer.init()
-                        _click_snd = pygame.mixer.Sound(str(p))
-                        break
-                if _click_snd:
-                    break
-
-        if _click_snd:
-            _click_snd.set_volume(max(0.0, min(1.0, float(CLICK_VOL))))
-            _click_snd.play()
-    except Exception:
-        pass
-
 
 def find_by_stem(assets_dir: Path, stem: str) -> Path | None:
     exts = (".png", ".jpg", ".jpeg")
@@ -133,7 +106,7 @@ def run(screen: pygame.Surface, assets_dir: Path):
 
         if click:
             if r1.collidepoint(mouse):
-                play_click(assets_dir)
+                play_sfx("select", assets_dir)  # <<< sonido al abrir dificultad
                 choice = dificultad.run(screen, assets_dir, nivel=1)
                 if isinstance(choice, dict) and "dificultad" in choice:
                     _stop_menu_music()
@@ -141,7 +114,7 @@ def run(screen: pygame.Surface, assets_dir: Path):
                             "dificultad": choice["dificultad"],
                             "personaje": choice.get("personaje", "EcoGuardian")}
             elif r2.collidepoint(mouse):
-                play_click(assets_dir)
+                play_sfx("select", assets_dir)
                 choice = dificultad.run(screen, assets_dir, nivel=2)
                 if isinstance(choice, dict) and "dificultad" in choice:
                     _stop_menu_music()
@@ -149,7 +122,7 @@ def run(screen: pygame.Surface, assets_dir: Path):
                             "dificultad": choice["dificultad"],
                             "personaje": choice.get("personaje", "EcoGuardian")}
             elif r3.collidepoint(mouse):
-                play_click(assets_dir)
+                play_sfx("select", assets_dir)
                 choice = dificultad.run(screen, assets_dir, nivel=3)
                 if isinstance(choice, dict) and "dificultad" in choice:
                     _stop_menu_music()
@@ -157,7 +130,7 @@ def run(screen: pygame.Surface, assets_dir: Path):
                             "dificultad": choice["dificultad"],
                             "personaje": choice.get("personaje", "EcoGuardian")}
             elif current_back_rect.collidepoint(mouse):
-                play_click(assets_dir)
+                play_sfx("back", assets_dir)  # <<< sonido back
                 return None
 
         pygame.display.flip()

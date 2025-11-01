@@ -29,7 +29,6 @@ def play_click(assets_dir: Path):
     except Exception:
         pass
 
-
 # ---------- helpers ----------
 def find_by_stem(folder: Path, stem: str) -> Optional[Path]:
     exts = (".png", ".jpg", ".jpeg")
@@ -64,13 +63,27 @@ def make_glow(radius: int) -> pygame.Surface:
         pygame.draw.circle(s, (255, 255, 120, a), (radius, radius), rr)
     return s
 
-def load_bg(assets_dir: Path, W: int, H: int) -> pygame.Surface:
-    for stem in ["nivel1_parque", "parque_nivel1", "park_level1", "nivel1", "bg_parque", "nivel1_bg"]:
+def load_bg_fit(assets_dir: Path, W: int, H: int) -> tuple[pygame.Surface, pygame.Rect]:
+    """Carga el fondo y lo AJUSTA manteniendo proporción (fit), sin recortar."""
+    candidates = ["nivel1_parque", "parque_nivel1", "park_level1", "nivel1", "bg_parque", "nivel1_bg"]
+    p = None
+    for stem in candidates:
         p = find_by_stem(assets_dir, stem)
         if p:
-            return pygame.transform.smoothscale(load_surface(p), (W, H))
-    bg = pygame.Surface((W, H)); bg.fill((40, 120, 40))
-    return bg
+            break
+
+    if p:
+        img = load_surface(p)
+    else:
+        img = pygame.Surface((W, H))
+        img.fill((40, 120, 40))
+
+    iw, ih = img.get_size()
+    ratio = min(W / iw, H / ih)
+    new_w, new_h = int(iw * ratio), int(ih * ratio)
+    scaled = pygame.transform.smoothscale(img, (new_w, new_h))
+    rect = scaled.get_rect(center=(W // 2, H // 2))
+    return scaled, rect
 
 def load_trash_images(assets_dir: Path) -> list[pygame.Surface]:
     imgs: list[pygame.Surface] = []
@@ -79,14 +92,24 @@ def load_trash_images(assets_dir: Path) -> list[pygame.Surface]:
         imgs.append(s.convert_alpha() if p.suffix.lower() == ".png" else s)
     return imgs
 
+# === Punto de anclaje para sostener la basura ===
+def _carry_anchor(player: pygame.sprite.Sprite, carrying: pygame.sprite.Sprite) -> tuple[int, int]:
+    rect = player.rect
+    cx, cy = rect.centerx, rect.centery
+    cy = rect.centery + int(rect.height * 0.22)
+    d = getattr(player, "dir", "down")
+    if d == "left":
+        cx -= int(rect.width * 0.12); cy += int(rect.height * 0.02)
+    elif d == "right":
+        cx += int(rect.width * 0.12); cy += int(rect.height * 0.02)
+    elif d == "up":
+        cy += int(rect.height * 0.06)
+    else:  # down
+        cy += int(rect.height * 0.04)
+    return cx, cy
 
-# === CARGA DE FRAMES DESDE /assets/PERSONAJE H/ ============================
+# === CARGA DE FRAMES DESDE /assets/PERSONAJE H/ ===
 def load_char_frames(assets_dir: Path, target_h: int) -> dict[str, list[pygame.Surface] | pygame.Surface]:
-    """
-    Carga animaciones desde: assets/PERSONAJE H/
-    Walk: ecoguardian_walk_<dir>_1..4.png
-    Idle opcional: ecoguardian_<dir>_idle.png (down/right/up; left se espeja si no existe)
-    """
     char_dir = assets_dir / "PERSONAJE H"
     if not char_dir.exists():
         raise FileNotFoundError("No se encontró la carpeta 'assets/PERSONAJE H'")
@@ -123,21 +146,15 @@ def load_char_frames(assets_dir: Path, target_h: int) -> dict[str, list[pygame.S
     idle_down  = _load_idle("ecoguardian_down_idle")
     idle_up    = _load_idle("ecoguardian_up_idle")
 
-    if right and not left:
-        left = [pygame.transform.flip(f, True, False) for f in right]
-    if left and not right:
-        right = [pygame.transform.flip(f, True, False) for f in left]
+    if right and not left: left = [pygame.transform.flip(f, True, False) for f in right]
+    if left and not right: right = [pygame.transform.flip(f, True, False) for f in left]
     if not down: down = right[:1] if right else []
     if not up:   up   = right[:1] if right else []
 
-    if idle_right is None and right:
-        idle_right = right[0]
-    if idle_left is None and idle_right is not None:
-        idle_left = pygame.transform.flip(idle_right, True, False)
-    if idle_down is None and down:
-        idle_down = down[0]
-    if idle_up is None and up:
-        idle_up = up[0]
+    if idle_right is None and right: idle_right = right[0]
+    if idle_left  is None and idle_right is not None: idle_left = pygame.transform.flip(idle_right, True, False)
+    if idle_down  is None and down:  idle_down = down[0]
+    if idle_up    is None and up:    idle_up   = up[0]
 
     def _scale(f: pygame.Surface) -> pygame.Surface:
         h = target_h
@@ -181,7 +198,6 @@ def load_char_frames(assets_dir: Path, target_h: int) -> dict[str, list[pygame.S
         "idle_right": idle_right, "idle_left": idle_left,
         "idle_down": idle_down, "idle_up": idle_up
     }
-
 
 # ---------- entidades ----------
 class Player(pygame.sprite.Sprite):
@@ -246,7 +262,6 @@ class Player(pygame.sprite.Sprite):
         self.rect = self.image.get_rect(midbottom=new_midbottom)
         self.rect.clamp_ip(self.bounds)
 
-
 class Trash(pygame.sprite.Sprite):
     def __init__(self, img: pygame.Surface, pos, scale_w: int):
         super().__init__()
@@ -266,61 +281,25 @@ class Trash(pygame.sprite.Sprite):
         surface.blit(self.image, self.rect)
 
 
-# === NUEVO: punto de anclaje para llevar la basura (panza/manos) ==========
-def _carry_anchor(player: pygame.sprite.Sprite, carrying: pygame.sprite.Sprite) -> tuple[int, int]:
-    """
-    Devuelve el punto (cx, cy) donde se sostiene la basura:
-    a la altura de la panza/manos, con leve desplazamiento según dirección.
-    """
-    rect = player.rect
-    cx, cy = rect.centerx, rect.centery
-
-    # Altura panza/manos
-    cy = rect.centery + int(rect.height * 0.08)
-
-    # Ajuste según dirección
-    d = getattr(player, "dir", "down")
-    if d == "left":
-        cx -= int(rect.width * 0.12)
-    elif d == "right":
-        cx += int(rect.width * 0.12)
-    elif d == "up":
-        cy -= int(rect.height * 0.02)
-    else:  # down
-        cy += int(rect.height * 0.02)
-
-    return cx, cy
-
-
 # ---------- NIVEL PRINCIPAL ----------
 def run(screen: pygame.Surface, assets_dir: Path, personaje: str = "EcoGuardian", dificultad: str = "Fácil"):
     pygame.font.init()
     clock = pygame.time.Clock()
     font = pygame.font.SysFont("arial", 26, bold=True)
     big  = pygame.font.SysFont("arial", 54, bold=True)
+    timer_font = pygame.font.SysFont("arial", 42, bold=True)
 
     W, H = screen.get_size()
-    background = load_bg(assets_dir, W, H)
-
-    # Botón Back
-    back_p = find_by_stem(assets_dir, "btn_back") or find_by_stem(assets_dir, "back")
-    if back_p:
-        back_img = load_surface(back_p).convert_alpha()
-        back_img = scale_to_width(back_img, max(120, min(int(W * 0.12), 240)))
-        back_rect = back_img.get_rect()
-        back_rect.bottomleft = (10, H - 12)
-    else:
-        back_img = None
-        back_rect = pygame.Rect(10, H - 60, 140, 50)
+    background, bg_rect = load_bg_fit(assets_dir, W, H)
 
     # Basurero
     bin_p = (find_by_stem(assets_dir, "basurero")
              or find_by_stem(assets_dir, "bote_basura")
              or find_by_stem(assets_dir, "trash_bin"))
     if bin_p:
-        bin_img = scale_to_width(load_surface(bin_p), int(W * 0.10))
+        bin_img = scale_to_width(load_surface(bin_p), int(W * 0.15))
     else:
-        bin_img = pygame.Surface((int(W * 0.10), int(W * 0.12)), pygame.SRCALPHA)
+        bin_img = pygame.Surface((int(W * 0.10), int(W * 0.15)), pygame.SRCALPHA)
         pygame.draw.rect(bin_img, (90, 90, 90), bin_img.get_rect(), border_radius=12)
         pygame.draw.rect(bin_img, (255, 255, 255), bin_img.get_rect(), 2, border_radius=12)
     bin_rect = bin_img.get_rect()
@@ -355,11 +334,22 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str = "EcoGuardian"
     paused = False
     t = 0.0
 
-    # === CARGA UI PAUSA DESDE assets/PAUSA/ ===
+    # === Temporizador (80s = 1:20) ===
+    TOTAL_MS = 80_000
+    start_ms = pygame.time.get_ticks()
+
+    # === Panel del temporizador (arriba-derecha, más chico) ===
+    timer_panel = None
+    for nm in ["temporizador", "timer_panel", "panel_tiempo", "TEMPORAZIDOR"]:
+        p = find_by_stem(assets_dir, nm)
+        if p:
+            timer_panel = load_surface(p)
+            break
+
+    # === PAUSA (usa assets/PAUSA/) ===
     pausa_dir = assets_dir / "PAUSA"
 
     def _load_btn_img(stem: str, max_w: int, max_h: int):
-        """Carga btn por stem desde assets/PAUSA con hover escalado."""
         p = find_by_stem(pausa_dir, stem)
         if not p:
             return None, None
@@ -370,7 +360,6 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str = "EcoGuardian"
         hs = pygame.transform.smoothscale(s, (int(s.get_width() * 1.08), int(s.get_height() * 1.08)))
         return s, hs
 
-    # Panel/fondo de la pausa (tu imagen grande)
     pausa_panel_img = None
     for nm in ["nivelA 2", "panel_pausa", "pausa_panel"]:
         ptex = find_by_stem(pausa_dir, nm)
@@ -378,7 +367,6 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str = "EcoGuardian"
             pausa_panel_img = load_surface(ptex)
             break
 
-    # Diccionario con imágenes de botones
     pausa_imgs = {
         "continuar": {"base": None, "hover": None},  # "inicio lm"
         "reiniciar": {"base": None, "hover": None},  # "reinicio lm"
@@ -386,7 +374,7 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str = "EcoGuardian"
     }
 
     def reset_level():
-        nonlocal trash_group, carrying, delivered
+        nonlocal trash_group, carrying, delivered, start_ms
         trash_group.empty()
         for i in range(total_trash):
             x = random.randint(int(W * 0.18), int(W * 0.82))
@@ -395,11 +383,16 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str = "EcoGuardian"
             trash_group.add(Trash(img, (x, y), int(W * 0.035)))
         carrying = None
         delivered = 0
+        start_ms = pygame.time.get_ticks()  # reinicia el tiempo
 
     while True:
         dt = min(clock.tick(60) / 1000.0, 0.033)
         t += dt
         interact = False
+
+        # tiempo restante
+        elapsed = pygame.time.get_ticks() - start_ms
+        remaining = max(0, TOTAL_MS - elapsed)
 
         for e in pygame.event.get():
             if e.type == pygame.QUIT:
@@ -413,18 +406,13 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str = "EcoGuardian"
                     play_click(assets_dir)
                 if e.key in PICK_KEYS:
                     interact = True
-            if e.type == pygame.MOUSEBUTTONDOWN and e.button == 1 and back_img:
-                if back_rect.collidepoint(e.pos):
-                    play_click(assets_dir)
-                    return None
 
-        if not paused:
+        if not paused and remaining > 0:
             player.handle_input(dt)
 
             if carrying:
                 carrying.carried = True
-                # === NUEVO: posición del objeto cargado a la altura de la panza/manos
-                carrying.rect.center = _carry_anchor(player, carrying)
+                carrying.rect.center = (player.rect.centerx, player.rect.top + carrying.rect.height // 2 - 6)
 
             if interact:
                 if not carrying:
@@ -447,7 +435,9 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str = "EcoGuardian"
                         delivered += 1
 
         # DIBUJO
-        screen.blit(background, (0, 0))
+        screen.fill((34, 45, 38))
+        screen.blit(background, bg_rect)
+
         screen.blit(bin_img, bin_rect)
         for tr in trash_group:
             tr.draw(screen, t)
@@ -457,47 +447,61 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str = "EcoGuardian"
 
         # HUD
         hud = [
-            "Nivel 1 – El Parque (Fácil, sin tiempo)",
+            "Nivel 1 – El Parque (Fácil, con tiempo)",
             "Mover: WASD/Flechas | Recoger/Depositar: E / Enter | Pausa: Espacio",
             f"Entregadas: {delivered} / {total_trash}",
         ]
         for i, line in enumerate(hud):
-            screen.blit(font.render(line, True, (15, 15, 15)), (16, 12 + i * 26))
+            screen.blit(font.render(line, True, (15, 15, 15)), (16, 25 + i * 26))
 
-        # Back
-        if back_img:
-            screen.blit(back_img, back_rect)
+        # --- Temporizador (arriba-derecha, panel más corto) ---
+        mm = remaining // 1000 // 60
+        ss = (remaining // 1000) % 60
+        time_str = f"{mm}:{ss:02d}"
+
+        margin = int(W * 0.04)
+        panel_w, panel_h = int(W * 0.18), int(H * 0.11)   # más corto y compacto
+        panel_rect = pygame.Rect(W - margin - panel_w, margin, panel_w, panel_h)
+
+        if timer_panel:
+            scaled = pygame.transform.smoothscale(timer_panel, (panel_rect.w, panel_rect.h))
+            screen.blit(scaled, panel_rect.topleft)
         else:
-            pygame.draw.rect(screen, (240, 240, 240), back_rect, border_radius=10)
-            txt = font.render("Menú", True, (10, 10, 10))
-            screen.blit(txt, txt.get_rect(center=back_rect.center))
+            pygame.draw.rect(screen, (30, 20, 15), panel_rect, border_radius=10)
+            inner = panel_rect.inflate(-10, -10)
+            pygame.draw.rect(screen, (210, 180, 140), inner, border_radius=8)
+            pygame.draw.rect(screen, (30, 20, 15), inner, 3, border_radius=8)
 
-        # === PAUSA (usa assets/PAUSA/) ===
+        # número desplazado un poco a la izquierda para no tapar el reloj de arena
+        txt = timer_font.render(time_str, True, (20, 15, 10))
+        sh  = timer_font.render(time_str, True, (0, 0, 0))
+        cx = panel_rect.centerx - int(panel_rect.w * 0.12)
+        cy = panel_rect.centery
+        screen.blit(sh,  sh.get_rect(center=(cx + 2, cy + 2)))
+        screen.blit(txt, txt.get_rect(center=(cx, cy)))
+
+        # === PAUSA ===
         if paused:
-            # oscurecer
             overlay = pygame.Surface((W, H), pygame.SRCALPHA)
             overlay.fill((0, 0, 0, 160))
             screen.blit(overlay, (0, 0))
 
-            # panel centrado
-            panel_w, panel_h = int(W * 0.52), int(H * 0.52)
-            panel = pygame.Rect(W//2 - panel_w//2, H//2 - panel_h//2, panel_w, panel_h)
+            panel_w2, panel_h2 = int(W * 0.52), int(H * 0.52)
+            panel2 = pygame.Rect(W//2 - panel_w2//2, H//2 - panel_h2//2, panel_w2, panel_h2)
 
             if pausa_panel_img:
-                # Escalar tu imagen de panel para que ocupe el rectángulo
-                panel_scaled = pygame.transform.smoothscale(pausa_panel_img, (panel_w, panel_h))
-                screen.blit(panel_scaled, panel)
+                panel_scaled = pygame.transform.smoothscale(pausa_panel_img, (panel_w2, panel_h2))
+                screen.blit(panel_scaled, panel2)
             else:
-                # Fallback minimal
-                pygame.draw.rect(screen, (30, 20, 15), panel, border_radius=16)
-                inner = panel.inflate(-10, -10)
-                pygame.draw.rect(screen, (210, 180, 140), inner, border_radius=14)
+                pygame.draw.rect(screen, (30, 20, 15), panel2, border_radius=16)
+                inner2 = panel2.inflate(-10, -10)
+                pygame.draw.rect(screen, (210, 180, 140), inner2, border_radius=14)
 
-            # título (opcional)
+            # título (opcional, tu panel ya lo tiene; lo dejamos por si no)
             title = big.render("PAUSA", True, (25, 20, 15))
-            screen.blit(title, title.get_rect(midtop=(W//2, panel.top + 20)))
+            screen.blit(title, title.get_rect(midtop=(W//2, panel2.top + 20)))
 
-            # Slots de botones
+            # Slots donde van tus imágenes de botones
             btn_w, btn_h = int(panel_w * 0.70), int(panel_h * 0.17)
             cx = W // 2
             start_y = panel.top + int(panel_h * 0.28)
@@ -506,7 +510,6 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str = "EcoGuardian"
             r_restart = pygame.Rect(0, 0, btn_w, btn_h); r_restart.center = (cx, start_y + btn_h + gap)
             r_menu    = pygame.Rect(0, 0, btn_w, btn_h); r_menu.center    = (cx, start_y + (btn_h + gap) * 2)
 
-            # Cargar imágenes de botones (una sola vez)
             if pausa_imgs["continuar"]["base"] is None:
                 max_w = int(btn_w * 0.92)
                 max_h = int(btn_h * 0.85)
@@ -518,7 +521,6 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str = "EcoGuardian"
             click = pygame.mouse.get_pressed()[0]
 
             def draw_btn(rect: pygame.Rect, key: str) -> bool:
-                """Dibuja SOLO la imagen del botón centrada en su slot (sin cajas)."""
                 hov = rect.collidepoint(mouse)
                 img = pausa_imgs[key]["hover"] if hov and pausa_imgs[key]["hover"] else pausa_imgs[key]["base"]
                 if img:
@@ -536,7 +538,7 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str = "EcoGuardian"
                 play_click(assets_dir)
                 return None
 
-        # === VICTORIA (pantalla win_level1) ===
+        # === VICTORIA / DERROTA ===
         if not paused and delivered >= total_trash:
             win_img = None
             p = find_by_stem(assets_dir, "win_level1")
@@ -548,10 +550,10 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str = "EcoGuardian"
             if win_img:
                 screen.blit(win_img, (0, 0))
                 pygame.display.flip()
-                elapsed = 0.0
-                while elapsed < 2.5:
+                elapsed2 = 0.0
+                while elapsed2 < 2.5:
                     dt2 = clock.tick(60) / 1000.0
-                    elapsed += dt2
+                    elapsed2 += dt2
                     for ev in pygame.event.get():
                         if ev.type == pygame.QUIT:
                             return {"estado": "completado", "recolectadas": total_trash}
@@ -560,14 +562,23 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str = "EcoGuardian"
                             return {"estado": "completado", "recolectadas": total_trash}
                 return {"estado": "completado", "recolectadas": total_trash}
 
-            # Fallback si no hay imagen de victoria
-            win = pygame.Surface((W, H), pygame.SRCALPHA)
-            win.fill((0, 120, 0, 90))
-            screen.blit(win, (0, 0))
+            overlay = pygame.Surface((W, H), pygame.SRCALPHA)
+            overlay.fill((0, 120, 0, 90))
+            screen.blit(overlay, (0, 0))
             wtxt = big.render("¡Parque limpio!", True, (255, 255, 255))
             screen.blit(wtxt, wtxt.get_rect(center=(W // 2, H // 2 - 10)))
             pygame.display.flip()
             pygame.time.delay(1200)
             return {"estado": "completado", "recolectadas": total_trash}
+
+        if remaining <= 0 and delivered < total_trash:
+            overlay = pygame.Surface((W, H), pygame.SRCALPHA)
+            overlay.fill((0, 0, 0, 160))
+            screen.blit(overlay, (0, 0))
+            msg = big.render("¡Tiempo agotado!", True, (255, 255, 255))
+            screen.blit(msg, msg.get_rect(center=(W // 2, H // 2 - 10)))
+            pygame.display.flip()
+            pygame.time.delay(1200)
+            return {"estado": "tiempo_agotado", "recolectadas": delivered}
 
         pygame.display.flip()

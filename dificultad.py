@@ -1,29 +1,10 @@
+# dificultad.py
 from __future__ import annotations
 import pygame
 from pathlib import Path
 from typing import Optional
 import importlib, importlib.util
-
-# ====== SFX click ======
-_click_snd: pygame.mixer.Sound | None = None
-def play_click(assets_dir: Path):
-    global _click_snd
-    if _click_snd is None:
-        try:
-            audio_dir = assets_dir / "msuiquita"
-            for stem in ["musica_botoncitos", "click", "boton"]:
-                for ext in (".ogg", ".wav", ".mp3"):
-                    for p in list(audio_dir.glob(f"{stem}{ext}")) + list(audio_dir.glob(f"{stem}*{ext}")):
-                        if not pygame.mixer.get_init(): pygame.mixer.init()
-                        _click_snd = pygame.mixer.Sound(str(p))
-                        _click_snd.set_volume(0.9)
-                        break
-                if _click_snd: break
-        except Exception:
-            _click_snd = None
-    if _click_snd:
-        try: _click_snd.play()
-        except Exception: pass
+from audio_shared import play_sfx  # <<< usar SFX compartidos (easy/hard/back)
 
 # ===== Helpers =====
 def find_by_stem(assets_dir: Path, stem: str) -> Optional[Path]:
@@ -157,21 +138,21 @@ def run(screen: pygame.Surface, assets_dir: Path, nivel: int = 1, *args, **kwarg
 
         if click:
             if rN.collidepoint(mouse):
-                play_click(assets_dir)
+                play_sfx("easy", assets_dir)   # <<< sonido Fácil
                 nombre = _abrir_seleccion_personaje(screen, assets_dir)
                 if nombre is None:  # cancelado
                     return None
                 return {"dificultad": "facil", "personaje": nombre}
 
             if rD.collidepoint(mouse):
-                play_click(assets_dir)
+                play_sfx("hard", assets_dir)   # <<< sonido Difícil
                 nombre = _abrir_seleccion_personaje(screen, assets_dir)
                 if nombre is None:
                     return None
                 return {"dificultad": "dificil", "personaje": nombre}
 
             if current_back_rect.collidepoint(mouse):
-                play_click(assets_dir)
+                play_sfx("back", assets_dir)   # <<< sonido Back
                 return None
 
         pygame.display.flip()
