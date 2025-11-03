@@ -105,32 +105,88 @@ def run(screen: pygame.Surface, assets_dir: Path):
             screen.blit(back_img, back_rect); current_back_rect = back_rect
 
         if click:
+            # debug rápido: muestra posición del click
+            print("DEBUG: click at", mouse)
+
+            def _handle_choice_for_level(lvl_num):
+                try:
+                    # llamar a la selección de dificultad/personaje
+                    choice = dificultad.run(screen, assets_dir, nivel=lvl_num)
+                except Exception as e:
+                    print(f"ERROR: excepción en dificultad.run(nivel={lvl_num}):", e)
+                    import traceback; traceback.print_exc()
+                    # vuelve al menú principal para evitar crash silencioso
+                    return None
+
+                print("DEBUG: dificultad.run returned:", choice)
+
+                # Si no devolvió el dict esperado, abortamos
+                if not isinstance(choice, dict) or "dificultad" not in choice:
+                    print("DEBUG: choice inválido, regresando al menú.")
+                    return None
+
+                # ---------- MAPPER de nombres -> carpetas de personaje ----------
+                # Ajusta estas claves si tu selección devuelve otros nombres.
+                CHARACTER_FOLDER_MAP = {
+                    "EcoGuardian": "PERSONAJE H",
+                    "EcoGuardianM": "PERSONAJE M",
+                    "H": "PERSONAJE H",
+                    "M": "PERSONAJE M",
+                    # agrega más mapeos si tu selección devuelve otros labels
+                }
+
+                # Preferimos recibir directamente el nombre de carpeta en 'personaje_folder'
+                # Si dificultad.run ya devuelve la carpeta correcta, úsala.
+                personaje_folder = None
+                if "personaje_folder" in choice:
+                    personaje_folder = choice["personaje_folder"]
+                elif "personaje" in choice:
+                    val = choice["personaje"]
+                    # si ya parece una carpeta válida, úsala
+                    if isinstance(val, str) and val.upper().startswith("PERSONAJE"):
+                        personaje_folder = val
+                    else:
+                        # mapear nombres user-friendly a nombres de carpeta
+                        personaje_folder = CHARACTER_FOLDER_MAP.get(val, None)
+                # fallback por defecto si no se resolvió:
+                if not personaje_folder:
+                    print("WARN: no se pudo mapear personaje recibido, usando 'PERSONAJE H' por defecto.")
+                    personaje_folder = "PERSONAJE H"
+
+                # devolvemos el dict con la carpeta ya resuelta
+                return {
+                    "nivel": lvl_num,
+                    "dificultad": choice["dificultad"],
+                    "personaje": personaje_folder
+                }
+
+            # nav click handling
             if r1.collidepoint(mouse):
-                play_sfx("select", assets_dir)  # <<< sonido al abrir dificultad
-                choice = dificultad.run(screen, assets_dir, nivel=1)
-                if isinstance(choice, dict) and "dificultad" in choice:
+                play_sfx("select", assets_dir)
+                result = _handle_choice_for_level(1)
+                if result:
                     _stop_menu_music()
-                    return {"nivel": 1,
-                            "dificultad": choice["dificultad"],
-                            "personaje": choice.get("personaje", "EcoGuardian")}
+                    print("DEBUG: iniciando nivel ->", result)
+                    return result
+
             elif r2.collidepoint(mouse):
                 play_sfx("select", assets_dir)
-                choice = dificultad.run(screen, assets_dir, nivel=2)
-                if isinstance(choice, dict) and "dificultad" in choice:
+                result = _handle_choice_for_level(2)
+                if result:
                     _stop_menu_music()
-                    return {"nivel": 2,
-                            "dificultad": choice["dificultad"],
-                            "personaje": choice.get("personaje", "EcoGuardian")}
+                    print("DEBUG: iniciando nivel ->", result)
+                    return result
+
             elif r3.collidepoint(mouse):
                 play_sfx("select", assets_dir)
-                choice = dificultad.run(screen, assets_dir, nivel=3)
-                if isinstance(choice, dict) and "dificultad" in choice:
+                result = _handle_choice_for_level(3)
+                if result:
                     _stop_menu_music()
-                    return {"nivel": 3,
-                            "dificultad": choice["dificultad"],
-                            "personaje": choice.get("personaje", "EcoGuardian")}
+                    print("DEBUG: iniciando nivel ->", result)
+                    return result
+
             elif current_back_rect.collidepoint(mouse):
-                play_sfx("back", assets_dir)  # <<< sonido back
+                play_sfx("back", assets_dir)
                 return None
 
         pygame.display.flip()

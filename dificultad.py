@@ -3,7 +3,7 @@ from __future__ import annotations
 import pygame
 from pathlib import Path
 from typing import Optional
-import importlib, importlib.util
+import importlib, importlib.util, re
 from audio_shared import play_sfx  # <<< usar SFX compartidos (easy/hard/back)
 
 # ===== Helpers =====
@@ -56,11 +56,69 @@ def _import_seleccion_clase():
 
 def _abrir_seleccion_personaje(screen: pygame.Surface, assets_dir: Path) -> Optional[str]:
     SeleccionPersonajeScreen = _import_seleccion_clase()
-    return SeleccionPersonajeScreen(screen, assets_dir).run()  # ← retorna nombre o None
+    # devuelve el nombre/label que la pantalla entrega (p.ej. "EcoGuardian (M)")
+    return SeleccionPersonajeScreen(screen, assets_dir).run()
+
+# ===== Normalizador de personaje (nuevo) =====
+def _resolve_personaje_folder(label: str) -> Optional[str]:
+    """
+    Convierte un label devuelto por la pantalla de selección en la carpeta real:
+    e.g. "EcoGuardian (M)" -> "PERSONAJE M"
+          "EcoGuardian" -> "PERSONAJE H"  (por convención si no indica M/H)
+          "H" -> "PERSONAJE H"
+          "M" -> "PERSONAJE M"
+    Devuelve None si no se pudo resolver.
+    """
+    if not isinstance(label, str):
+        return None
+    raw = label.strip()
+    if not raw:
+        return None
+
+    lower = raw.lower()
+
+    # Si ya es directamente la carpeta, devuélvela en mayúsculas
+    if lower.startswith("personaje"):
+        return raw.upper()
+
+    # Detectar indicadores explícitos de M o H dentro del label
+    # Busca patrones como "(M)" "(H)", " m ", "-M", " (m)", etc.
+    if re.search(r"\( *m *\)", lower) or re.search(r"\bM\b", raw) and not re.search(r"\bH\b", raw):
+        return "PERSONAJE M"
+    if re.search(r"\( *h *\)", lower) or re.search(r"\bH\b", raw) and not re.search(r"\bM\b", raw):
+        return "PERSONAJE H"
+
+    # Normalizar quitando caracteres no alfanuméricos y paréntesis
+    key = re.sub(r"[^\w]", "", lower)
+
+    # Mapeo sencillo de claves conocidas
+    MAP = {
+        "ecoguardian": "PERSONAJE H",
+        "ecoguardianm": "PERSONAJE M",
+        "ecoguardianh": "PERSONAJE H",
+        "guardian": "PERSONAJE H",
+        "guardianm": "PERSONAJE M",
+        "h": "PERSONAJE H",
+        "m": "PERSONAJE M",
+        "male": "PERSONAJE M",
+        "female": "PERSONAJE H",
+    }
+
+    if key in MAP:
+        return MAP[key]
+
+    # heurística final: si contiene "m" como sufijo o dentro de paréntesis, toma M
+    if key.endswith("m"):
+        return "PERSONAJE M"
+    if key.endswith("h"):
+        return "PERSONAJE H"
+
+    # no se resolvió
+    return None
 
 # ===== Pantalla Dificultad =====
 def run(screen: pygame.Surface, assets_dir: Path, nivel: int = 1, *args, **kwargs):
-    """Devuelve {'dificultad': 'facil'|'dificil', 'personaje': <str>} o None si Back."""
+    """Devuelve {'dificultad': 'facil'|'dificil', 'personaje': <label original>, 'personaje_folder': <carpeta>} o None si Back."""
     clock = pygame.time.Clock()
     W, H = screen.get_size()
 
@@ -142,14 +200,28 @@ def run(screen: pygame.Surface, assets_dir: Path, nivel: int = 1, *args, **kwarg
                 nombre = _abrir_seleccion_personaje(screen, assets_dir)
                 if nombre is None:  # cancelado
                     return None
-                return {"dificultad": "facil", "personaje": nombre}
+
+                # normalizar personaje a carpeta
+                carpeta = _resolve_personaje_folder(nombre)
+                if carpeta is None:
+                    # fallback por si no se pudo resolver: asumimos PERSONAJE H
+                    print(f"WARN: no se pudo resolver carpeta de personaje para '{nombre}', usando 'PERSONAJE H' por defecto.")
+                    carpeta = "PERSONAJE H"
+
+                return {"dificultad": "facil", "personaje": nombre, "personaje_folder": carpeta}
 
             if rD.collidepoint(mouse):
                 play_sfx("hard", assets_dir)   # <<< sonido Difícil
                 nombre = _abrir_seleccion_personaje(screen, assets_dir)
                 if nombre is None:
                     return None
-                return {"dificultad": "dificil", "personaje": nombre}
+
+                carpeta = _resolve_personaje_folder(nombre)
+                if carpeta is None:
+                    print(f"WARN: no se pudo resolver carpeta de personaje para '{nombre}', usando 'PERSONAJE H' por defecto.")
+                    carpeta = "PERSONAJE H"
+
+                return {"dificultad": "dificil", "personaje": nombre, "personaje_folder": carpeta}
 
             if current_back_rect.collidepoint(mouse):
                 play_sfx("back", assets_dir)   # <<< sonido Back

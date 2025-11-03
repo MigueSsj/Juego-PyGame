@@ -1,5 +1,5 @@
 # main.py
-import pygame, os, math
+import pygame, os, math, traceback
 import opciones
 import play
 import instrucciones
@@ -113,6 +113,25 @@ t = 0
 FLOAT_AMP   = 8
 FLOAT_SPEED = 0.08
 
+# Helper para lanzar niveles según número/dificultad
+def _load_level_module(nivel: int, dificultad: str):
+    # devuelve el módulo apropiado o lanza ImportError
+    if nivel == 1:
+        if dificultad == "facil":
+            import levels.nivel1_facil as mod; return mod
+        else:
+            import levels.nivel1_dificil as mod; return mod
+    elif nivel == 2:
+        if dificultad == "facil":
+            import levels.nivel2_facil as mod; return mod
+        else:
+            # si tienes nivel2_dificil en el futuro, cámbialo aquí; por ahora reutilizamos facil como fallback
+            import levels.nivel2_facil as mod; return mod
+    elif nivel == 3:
+        # adapta si tienes nivel3 modules
+        import levels.nivel3_facil as mod; return mod
+    raise RuntimeError("Nivel no soportado: " + str(nivel))
+
 # ===== LOOP =====
 running = True
 while running:
@@ -158,20 +177,95 @@ while running:
             ensure_menu_music_running(ASSETS)
 
             if isinstance(result, dict) and "nivel" in result and "dificultad" in result:
-                nivel = result["nivel"]
+                nivel = int(result["nivel"])
                 dif = result["dificultad"]
-                personaje = result.get("personaje", "EcoGuardian")
+                # preferimos personaje_folder (carpeta ya normalizada) si existe
+                personaje = result.get("personaje_folder") or result.get("personaje") or "PERSONAJE H"
 
-                if nivel == 1 and dif == "facil":
-                    from levels import nivel1_facil as lv
-                    lv.run(screen, ASSETS, personaje=personaje, dificultad="Fácil")
+                print("DEBUG: play.run result ->", result)
+                # Cargar módulo correcto
+                try:
+                    nivel_mod = _load_level_module(nivel, dif)
+                except Exception as e:
+                    print("ERROR: no pude cargar módulo de nivel:", e)
+                    traceback.print_exc()
+                    ensure_menu_music_running(ASSETS)
+                    pygame.display.flip(); clock.tick(60); t += 1; continue
 
-                elif nivel == 1 and dif == "dificil":
-                    # ← ahora sí usa el módulo difícil real con temporizador y 12 objetos
-                    from levels import nivel1_dificil as lv
-                    lv.run(screen, ASSETS, personaje=personaje, dificultad="Difícil")
+                # Instanciamos/executamos el nivel según la API del módulo
+                try:
+                    # Asegurarnos de que la carpeta del personaje exista; si no, intentar alternativas
+                    char_folder = personaje
+                    pf = ASSETS / char_folder
+                    if not pf.exists():
+                        # probar invertir M/H si existe la otra
+                        alt = None
+                        if "M" in char_folder and (ASSETS / "PERSONAJE H").exists():
+                            alt = "PERSONAJE H"
+                        elif "H" in char_folder and (ASSETS / "PERSONAJE M").exists():
+                            alt = "PERSONAJE M"
+                        # intentar detectar carpeta con prefijo 'PERSONAJE' presente en assets
+                        if alt is None:
+                            for cand in ("PERSONAJE H", "PERSONAJE M", "personaje_h", "personaje_m"):
+                                if (ASSETS / cand).exists():
+                                    alt = cand
+                                    break
+                        if alt:
+                            print(f"WARN: carpeta {pf} no existe. Usando alternativa {alt}.")
+                            char_folder = alt
+                        else:
+                            print(f"WARN: carpeta {pf} no existe y no encontré alternativas. Uso 'PERSONAJE H' por defecto.")
+                            char_folder = "PERSONAJE H"
 
-                ensure_menu_music_running(ASSETS)
+                    # Buscar la clase del nivel en el módulo
+                    class_name_candidates = [f"Nivel{nivel}Facil", f"Nivel{nivel}Dificil", f"Nivel{nivel}"]
+                    NivelClass = None
+                    for cname in class_name_candidates:
+                        if hasattr(nivel_mod, cname):
+                            NivelClass = getattr(nivel_mod, cname)
+                            break
+
+                    if NivelClass is not None:
+                        # preferimos constructor con char_folder
+                        try:
+                            level = NivelClass(screen, ASSETS, char_folder=char_folder)
+                        except TypeError:
+                            try:
+                                level = NivelClass(screen, ASSETS, personaje=char_folder, dificultad=dif)
+                            except TypeError:
+                                level = NivelClass()
+
+                        # loop del nivel
+                        in_level = True
+                        while in_level:
+                            dt = clock.tick(60)
+                            res = level.update(dt)
+                            level.draw()
+                            pygame.display.flip()
+                            if res == "pause":
+                                in_level = False
+                            elif res == "home":
+                                in_level = False
+                            elif res == "quit":
+                                in_level = False
+                                running = False
+                        ensure_menu_music_running(ASSETS)
+
+                    elif hasattr(nivel_mod, "run"):
+                        # fallback a función run
+                        try:
+                            nivel_mod.run(screen, ASSETS, dificultad=dif, personaje=char_folder)
+                        except TypeError:
+                            nivel_mod.run(screen, ASSETS, personaje=char_folder, dificultad=dif)
+                        ensure_menu_music_running(ASSETS)
+                    else:
+                        print("ERROR: módulo de nivel no tiene clase esperada ni función run().")
+                        ensure_menu_music_running(ASSETS)
+
+                except Exception as e:
+                    print("ERROR dentro del nivel:", e)
+                    traceback.print_exc()
+                    ensure_menu_music_running(ASSETS)
 
             pygame.display.flip(); clock.tick(60); t += 1; continue
 

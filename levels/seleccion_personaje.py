@@ -4,6 +4,7 @@ import pygame
 from pathlib import Path
 from typing import Optional, List, Tuple
 from audio_shared import play_sfx  # <<< usamos el banco SFX compartido
+import re
 
 # ===== helpers =====
 def find_by_stem(assets_dir: Path, stem: str) -> Optional[Path]:
@@ -61,13 +62,50 @@ def _pretty_name(p: Path) -> str:
     """Convierte nombre de archivo a nombre visible."""
     stem = p.stem.lower()
     # mapeos comunes de tu proyecto
-    if "eco" in stem and "m" in stem and ("frente" in stem or "eco_m" in stem or "-m" in stem or "_m" in stem):
+    if "eco" in stem and ("_m" in stem or "-m" in stem or "eco_m" in stem or "mfrente" in stem or "m" in stem and "frente" in stem):
         return "EcoGuardian (M)"
-    if "eco" in stem and "f" in stem and ("frente" in stem or "eco_f" in stem or "-f" in stem or "_f" in stem):
+    if "eco" in stem and ("_f" in stem or "-f" in stem or "eco_f" in stem or "f" in stem and "frente" in stem):
         return "EcoGuardian (F)"
     nice = stem.replace("frente", "").replace("_", " ").replace("-", " ").strip()
     nice = " ".join(n for n in nice.split() if n)  # limpia dobles espacios
     return nice.title() if nice else "Personaje"
+
+# ===== new helper: inferir carpeta de personaje =====
+def _infer_personaje_folder_from_candidate(path: Optional[Path], visible_name: str) -> str:
+    """
+    Devuelve 'PERSONAJE M' o 'PERSONAJE H' según heurística:
+    - busca indicadores en el nombre de archivo (p.ex. _m, -m, m, male)
+    - si no encuentra, intenta detectar (M)/(F) en visible_name
+    - por defecto devuelve PERSONAJE H
+    """
+    # 1) desde path/filename si está disponible
+    if path is not None and isinstance(path, Path):
+        stem = path.stem.lower()
+        # patrones comunes que indican masculino
+        if re.search(r"(_|\\b|-)m($|\\b)", stem) or re.search(r"\bm\b", stem):
+            return "PERSONAJE M"
+        if re.search(r"(_|\\b|-)f($|\\b)", stem) or re.search(r"\bf\b", stem):
+            return "PERSONAJE H"
+        if "male" in stem:
+            return "PERSONAJE M"
+        if "female" in stem or "fem" in stem:
+            return "PERSONAJE H"
+
+    # 2) desde el nombre visible (ej. "EcoGuardian (M)")
+    v = (visible_name or "").strip().lower()
+    if "(m)" in v or v.endswith(" m") or " m)" in v or " male" in v:
+        return "PERSONAJE M"
+    if "(f)" in v or v.endswith(" f") or " f)" in v or " female" in v:
+        return "PERSONAJE H"
+    # heurística simple: si contiene 'm' al final sin contener 'h', asumimos masculino
+    simple = re.sub(r"[^\w]", "", v)
+    if simple.endswith("m") and not simple.endswith("h"):
+        return "PERSONAJE M"
+    if simple.endswith("f") and not simple.endswith("m"):
+        return "PERSONAJE H"
+
+    # por defecto (si no podemos decidir) devolvemos H (femenino/backwards compat)
+    return "PERSONAJE H"
 
 # ===== botón =====
 class Button:
@@ -198,6 +236,10 @@ class SeleccionPersonajeScreen:
             self.screen.blit(self.bg_scaled, (int(x), 0)); x += self.bg_scaled.get_width()
 
     def run(self) -> Optional[str]:
+        """
+        Ahora devuelve la carpeta del personaje seleccionada:
+          -> "PERSONAJE H" ó "PERSONAJE M"
+        """
         while True:
             dt = self.clock.tick(60) / 1000.0
             events = pygame.event.get()
@@ -208,7 +250,9 @@ class SeleccionPersonajeScreen:
                     if ev.key in (pygame.K_RETURN, pygame.K_KP_ENTER):
                         if self.idx >= 0:
                             play_sfx("select", self.assets_dir)
-                            return self.candidatos[self.idx]["name"]
+                            cand = self.candidatos[self.idx]
+                            carpeta = _infer_personaje_folder_from_candidate(cand.get("path"), cand.get("name"))
+                            return carpeta
                     if ev.key == pygame.K_ESCAPE:
                         play_sfx("back", self.assets_dir)
                         return None
@@ -223,7 +267,9 @@ class SeleccionPersonajeScreen:
             if self.btn_confirmar.update(events):
                 if self.idx >= 0:
                     play_sfx("select", self.assets_dir)
-                    return self.candidatos[self.idx]["name"]
+                    cand = self.candidatos[self.idx]
+                    carpeta = _infer_personaje_folder_from_candidate(cand.get("path"), cand.get("name"))
+                    return carpeta
 
             for ev in events:
                 if ev.type == pygame.MOUSEBUTTONDOWN and ev.button == 1:
