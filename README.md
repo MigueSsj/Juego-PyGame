@@ -1,5 +1,13 @@
-# Guardianes del planeta
+<div align="center">
+  <img src="assets/titulo_juego.png" alt="Logo" title="Logo" width="200">
+</div>
+
+<h1 align="center">Guardianes del planeta!</h1>
+
+<p align="center">
 “Guardianes del Planeta” es un videojuego educativo desarrollado con Python y Pygame, creado como parte de un Proyecto Integrador enfocado en el Objetivo de Desarrollo Sostenible (ODS) 11: Ciudades y comunidades sostenibles.
+</p>
+
 ## Objetivo general
 Desarrollar un videojuego educativo en Python con Pygame, que promueva la concientización ambiental y fomente acciones sostenibles en los jugadores mediante la interacción y el aprendizaje lúdico, contribuyendo al cumplimiento del ODS 11: Ciudades y comunidades sostenibles.
 
