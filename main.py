@@ -226,6 +226,12 @@ while running:
                             break
 
                     if NivelClass is not None:
+                        
+                        # ======================================================
+                        # === CAMBIO 1: Detener la música ANTES de la clase ===
+                        pygame.mixer.music.fadeout(1000) # 1 segundo
+                        # ======================================================
+                        
                         # preferimos constructor con char_folder
                         try:
                             level = NivelClass(screen, ASSETS, char_folder=char_folder)
@@ -252,6 +258,12 @@ while running:
                         ensure_menu_music_running(ASSETS)
 
                     elif hasattr(nivel_mod, "run"):
+                        
+                        # ======================================================
+                        # === CAMBIO 2: Detener la música ANTES de .run() ===
+                        pygame.mixer.music.fadeout(1000) # 1 segundo
+                        # ======================================================
+                        
                         # fallback a función run
                         try:
                             nivel_mod.run(screen, ASSETS, dificultad=dif, personaje=char_folder)

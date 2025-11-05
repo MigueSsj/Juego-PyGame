@@ -53,12 +53,20 @@ def start_menu_music(assets_dir: Path) -> None:
         vol = load_master_volume(assets_dir)
         pygame.mixer.music.set_volume(vol)
 
-        # Busca alguna pista razonable de menú
+        # =====================================================================
+        # === ¡¡AQUÍ ESTÁ LA CORRECCIÓN!! ===
+        # Añadí "musica inicio" (con espacio) a la lista.
+        # =====================================================================
         cand = _find_audio(assets_dir, [
+            "musica inicio", # <--- ¡AÑADIDO!
             "musica_menu", "menu_music", "bg_menu", "fondo_menu", "musica_inicio"
         ])
+        
         if cand is None:
+            # Si sigue sin encontrarla, imprime un aviso
+            print(f"ADVERTENCIA: No se encontró el archivo de música de menú (ej. 'musica inicio.mp3') en {assets_dir / 'msuiquita'}")
             return
+            
         global _menu_loaded_src
         if _menu_loaded_src != str(cand):
             pygame.mixer.music.load(str(cand))
@@ -89,7 +97,7 @@ def set_music_volume_now(assets_dir: Path, v: float) -> None:
 
 # ---------- Banco SFX ----------
 _sfx_cache: dict[str, pygame.mixer.Sound] = {}
-_sfx_volume: float = 0.7   # se sincroniza con volumen maestro
+_sfx_volume: float = -1.0  # -1.0 significa que debe leerse desde load_master_volume
 
 # keys → posibles nombres de archivo
 _SFX_STEMS = {
@@ -98,6 +106,14 @@ _SFX_STEMS = {
     "easy":   ["modo_facil", "btn_facil", "facil"],
     "hard":   ["modo_dificil", "btn_dificil", "dificil"],
 }
+
+def _get_sfx_volume(assets_dir: Path) -> float:
+    """Obtiene el volumen SFX, inicializándolo desde el master si es necesario."""
+    global _sfx_volume
+    if _sfx_volume == -1.0:
+        # Si es la primera vez que se usa, cárgalo desde el archivo
+        _sfx_volume = load_master_volume(assets_dir)
+    return _sfx_volume
 
 def _load_sfx_key(key: str, assets_dir: Path) -> pygame.mixer.Sound | None:
     if key in _sfx_cache:
@@ -109,7 +125,7 @@ def _load_sfx_key(key: str, assets_dir: Path) -> pygame.mixer.Sound | None:
     try:
         _ensure_mixer()
         snd = pygame.mixer.Sound(str(p))
-        snd.set_volume(_sfx_volume)
+        snd.set_volume(_get_sfx_volume(assets_dir))
         _sfx_cache[key] = snd
         return snd
     except Exception:
@@ -132,7 +148,7 @@ def play_sfx(key: str, assets_dir: Path) -> None:
     try:
         snd = _load_sfx_key(key, assets_dir)
         if snd:
-            snd.set_volume(_sfx_volume)  # por si cambió en caliente
+            snd.set_volume(_get_sfx_volume(assets_dir))  # Asegura el volumen actual
             snd.play()
     except Exception:
         pass

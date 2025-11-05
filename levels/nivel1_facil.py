@@ -334,9 +334,12 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str = "EcoGuardian"
     paused = False
     t = 0.0
 
-    # === Temporizador (80s = 1:20) ===
+    # =====================================================================
+    # === CAMBIO 1: Lógica del temporizador ===
+    # Ya no usamos 'start_ms'. Usamos 'remaining_ms' para guardar el tiempo.
+    # =====================================================================
     TOTAL_MS = 80_000
-    start_ms = pygame.time.get_ticks()
+    remaining_ms = TOTAL_MS  # <-- Esta es ahora la variable principal del tiempo
 
     # === Panel del temporizador (arriba-derecha, más chico) ===
     timer_panel = None
@@ -349,32 +352,24 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str = "EcoGuardian"
     # === PAUSA (usa assets/PAUSA/) ===
     pausa_dir = assets_dir / "PAUSA"
 
-    def _load_btn_img(stem: str, max_w: int, max_h: int):
-        p = find_by_stem(pausa_dir, stem)
-        if not p:
-            return None, None
-        img = load_surface(p)
-        s = img.copy()
-        ratio = min(max_w / s.get_width(), max_h / s.get_height(), 1.0)
-        s = pygame.transform.smoothscale(s, (int(s.get_width() * ratio), int(s.get_height() * ratio)))
-        hs = pygame.transform.smoothscale(s, (int(s.get_width() * 1.08), int(s.get_height() * 1.08)))
-        return s, hs
-
     pausa_panel_img = None
     for nm in ["nivelA 2", "panel_pausa", "pausa_panel"]:
         ptex = find_by_stem(pausa_dir, nm)
         if ptex:
             pausa_panel_img = load_surface(ptex)
             break
-
-    pausa_imgs = {
-        "continuar": {"base": None, "hover": None},  # "inicio lm"
-        "reiniciar": {"base": None, "hover": None},  # "reinicio lm"
-        "menu":      {"base": None, "hover": None},  # "house"
+            
+    pause_button_assets = {
+        "cont_base": None, "cont_hover": None,
+        "restart_base": None, "restart_hover": None,
+        "menu_base": None, "menu_hover": None,
     }
 
+    # =====================================================================
+    # === CAMBIO 2: reset_level() ahora resetea 'remaining_ms' ===
+    # =====================================================================
     def reset_level():
-        nonlocal trash_group, carrying, delivered, start_ms
+        nonlocal trash_group, carrying, delivered, remaining_ms # <-- Añadido 'remaining_ms'
         trash_group.empty()
         for i in range(total_trash):
             x = random.randint(int(W * 0.18), int(W * 0.82))
@@ -383,16 +378,17 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str = "EcoGuardian"
             trash_group.add(Trash(img, (x, y), int(W * 0.035)))
         carrying = None
         delivered = 0
-        start_ms = pygame.time.get_ticks()  # reinicia el tiempo
+        remaining_ms = TOTAL_MS  # <-- Se resetea el tiempo
 
     while True:
         dt = min(clock.tick(60) / 1000.0, 0.033)
         t += dt
         interact = False
 
-        # tiempo restante
-        elapsed = pygame.time.get_ticks() - start_ms
-        remaining = max(0, TOTAL_MS - elapsed)
+        # =====================================================================
+        # === CAMBIO 3: Cálculo de tiempo ELIMINADO de aquí ===
+        # Ya no se calcula 'elapsed' ni 'remaining' aquí
+        # =====================================================================
 
         for e in pygame.event.get():
             if e.type == pygame.QUIT:
@@ -404,10 +400,19 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str = "EcoGuardian"
                 if e.key == pygame.K_SPACE:
                     paused = not paused
                     play_click(assets_dir)
+                    # No necesitamos lógica extra del timer aquí
                 if e.key in PICK_KEYS:
                     interact = True
 
-        if not paused and remaining > 0:
+        # =====================================================================
+        # === CAMBIO 4: Lógica del juego y actualización del timer ===
+        # Solo restamos tiempo de 'remaining_ms' si NO estamos en pausa.
+        # =====================================================================
+        if not paused and remaining_ms > 0:
+            # Restamos el tiempo de este frame
+            remaining_ms -= int(dt * 1000)
+            remaining_ms = max(0, remaining_ms) # Nos aseguramos que no baje de 0
+            
             player.handle_input(dt)
 
             if carrying:
@@ -433,7 +438,9 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str = "EcoGuardian"
                         trash_group.remove(carrying)
                         carrying = None
                         delivered += 1
-
+        
+        # El resto del código (dibujo) se ejecuta siempre
+        
         # DIBUJO
         screen.fill((34, 45, 38))
         screen.blit(background, bg_rect)
@@ -454,7 +461,11 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str = "EcoGuardian"
         for i, line in enumerate(hud):
             screen.blit(font.render(line, True, (15, 15, 15)), (16, 25 + i * 26))
 
-        # --- Temporizador (arriba-derecha, panel más corto) ---
+        # =====================================================================
+        # === CAMBIO 5: El display del timer ahora LEE de 'remaining_ms' ===
+        # =====================================================================
+        remaining = remaining_ms  # <-- 'remaining' es ahora solo para mostrar
+        
         mm = remaining // 1000 // 60
         ss = (remaining // 1000) % 60
         time_str = f"{mm}:{ss:02d}"
@@ -482,13 +493,16 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str = "EcoGuardian"
 
         # === PAUSA ===
         if paused:
+            # Esta sección se dibuja ENCIMA del juego y el HUD
             overlay = pygame.Surface((W, H), pygame.SRCALPHA)
             overlay.fill((0, 0, 0, 160))
             screen.blit(overlay, (0, 0))
 
             panel_w2, panel_h2 = int(W * 0.52), int(H * 0.52)
             panel2 = pygame.Rect(W//2 - panel_w2//2, H//2 - panel_h2//2, panel_w2, panel_h2)
-
+            
+            panel_scaled = None
+            
             if pausa_panel_img:
                 panel_scaled = pygame.transform.smoothscale(pausa_panel_img, (panel_w2, panel_h2))
                 screen.blit(panel_scaled, panel2)
@@ -497,48 +511,87 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str = "EcoGuardian"
                 inner2 = panel2.inflate(-10, -10)
                 pygame.draw.rect(screen, (210, 180, 140), inner2, border_radius=14)
 
-            # título (opcional, tu panel ya lo tiene; lo dejamos por si no)
-            title = big.render("PAUSA", True, (25, 20, 15))
-            screen.blit(title, title.get_rect(midtop=(W//2, panel2.top + 20)))
+            # Título "PAUSA" eliminado (comentado)
+            # title = big.render("PAUSA", True, (25, 20, 15))
+            # screen.blit(title, title.get_rect(midtop=(W//2, panel2.top + 20)))
 
-            # Slots donde van tus imágenes de botones
-            btn_w, btn_h = int(panel_w * 0.70), int(panel_h * 0.17)
-            cx = W // 2
-            start_y = panel.top + int(panel_h * 0.28)
-            gap = int(panel_h * 0.06)
-            r_cont    = pygame.Rect(0, 0, btn_w, btn_h); r_cont.center    = (cx, start_y)
-            r_restart = pygame.Rect(0, 0, btn_w, btn_h); r_restart.center = (cx, start_y + btn_h + gap)
-            r_menu    = pygame.Rect(0, 0, btn_w, btn_h); r_menu.center    = (cx, start_y + (btn_h + gap) * 2)
+            # Tamaños y posiciones para los botones
+            btn_w, btn_h = int(panel_w2 * 0.80), int(panel_h2 * 0.18)
+            cx = panel2.centerx
+            
+            y_cont_pct    = 0.40
+            y_restart_pct = 0.60
+            y_menu_pct    = 0.80
+            
+            y_cont    = panel2.top + int(panel_h2 * y_cont_pct)
+            y_restart = panel2.top + int(panel_h2 * y_restart_pct)
+            y_menu    = panel2.top + int(panel_h2 * y_menu_pct)
 
-            if pausa_imgs["continuar"]["base"] is None:
-                max_w = int(btn_w * 0.92)
-                max_h = int(btn_h * 0.85)
-                pausa_imgs["continuar"]["base"], pausa_imgs["continuar"]["hover"] = _load_btn_img("inicio lm", max_w, max_h)
-                pausa_imgs["reiniciar"]["base"],  pausa_imgs["reiniciar"]["hover"]  = _load_btn_img("reinicio lm", max_w, max_h)
-                pausa_imgs["menu"]["base"],       pausa_imgs["menu"]["hover"]       = _load_btn_img("house", max_w, max_h)
+            r_cont    = pygame.Rect(0, 0, btn_w, btn_h); r_cont.center    = (cx, y_cont)
+            r_restart = pygame.Rect(0, 0, btn_w, btn_h); r_restart.center = (cx, y_restart)
+            r_menu    = pygame.Rect(0, 0, btn_w, btn_h); r_menu.center    = (cx, y_menu)
+
+            # Crear botones "recortados" y versiones "hover"
+            if pause_button_assets["cont_base"] is None and panel_scaled:
+                try:
+                    # Calcular rects locales (dentro del panel)
+                    r_cont_local    = r_cont.move(-panel2.x, -panel2.y)
+                    r_restart_local = r_restart.move(-panel2.x, -panel2.y)
+                    r_menu_local    = r_menu.move(-panel2.x, -panel2.y)
+                    
+                    # Recortar las imágenes base del panel escalado
+                    base_cont    = panel_scaled.subsurface(r_cont_local)
+                    base_restart = panel_scaled.subsurface(r_restart_local)
+                    base_menu    = panel_scaled.subsurface(r_menu_local)
+                    
+                    pause_button_assets["cont_base"] = base_cont
+                    pause_button_assets["restart_base"] = base_restart
+                    pause_button_assets["menu_base"] = base_menu
+                    
+                    # Crear versiones "hover" (un 5% más grandes)
+                    hover_w_cont, hover_h_cont = int(r_cont.w * 1.05), int(r_cont.h * 1.05)
+                    hover_w_rest, hover_h_rest = int(r_restart.w * 1.05), int(r_restart.h * 1.05)
+                    hover_w_menu, hover_h_menu = int(r_menu.w * 1.05), int(r_menu.h * 1.05)
+                    
+                    pause_button_assets["cont_hover"] = pygame.transform.smoothscale(base_cont, (hover_w_cont, hover_h_cont))
+                    pause_button_assets["restart_hover"] = pygame.transform.smoothscale(base_restart, (hover_w_rest, hover_h_rest))
+                    pause_button_assets["menu_hover"] = pygame.transform.smoothscale(base_menu, (hover_w_menu, hover_h_menu))
+                except ValueError:
+                    # Esto puede pasar si los rects están fuera del panel, reseteamos para que no falle
+                    pause_button_assets["cont_base"] = None # Resetea para reintentar
+                    print("Advertencia: No se pudieron crear los subsurfaces de los botones.")
+                
 
             mouse = pygame.mouse.get_pos()
             click = pygame.mouse.get_pressed()[0]
 
-            def draw_btn(rect: pygame.Rect, key: str) -> bool:
-                hov = rect.collidepoint(mouse)
-                img = pausa_imgs[key]["hover"] if hov and pausa_imgs[key]["hover"] else pausa_imgs[key]["base"]
-                if img:
-                    screen.blit(img, img.get_rect(center=rect.center))
+            # Función draw_btn (Efecto de Escala)
+            def draw_btn(base_rect: pygame.Rect, hover_img: pygame.Surface) -> bool:
+                hov = base_rect.collidepoint(mouse)
+                if hov and hover_img:
+                    # Dibujar la imagen hover, centrada sobre el botón original
+                    hover_rect = hover_img.get_rect(center=base_rect.center)
+                    screen.blit(hover_img, hover_rect)
+                
+                # Devuelve True si se hace clic mientras se está sobre el botón
                 return hov and click
 
-            if draw_btn(r_cont, "continuar"):
+            # Llamadas a draw_btn actualizadas
+            if draw_btn(r_cont, pause_button_assets["cont_hover"]):
                 play_click(assets_dir)
                 paused = False
-            elif draw_btn(r_restart, "reiniciar"):
+            elif draw_btn(r_restart, pause_button_assets["restart_hover"]):
                 play_click(assets_dir)
                 reset_level()
                 paused = False
-            elif draw_btn(r_menu, "menu"):
+            elif draw_btn(r_menu, pause_button_assets["menu_hover"]):
                 play_click(assets_dir)
                 return None
 
-        # === VICTORIA / DERROTA ===
+
+        # =====================================================================
+        # === CAMBIO 6: Condición de derrota ahora usa 'remaining_ms' ===
+        # =====================================================================
         if not paused and delivered >= total_trash:
             win_img = None
             p = find_by_stem(assets_dir, "win_level1")
@@ -571,7 +624,8 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str = "EcoGuardian"
             pygame.time.delay(1200)
             return {"estado": "completado", "recolectadas": total_trash}
 
-        if remaining <= 0 and delivered < total_trash:
+        # Comprueba la derrota usando 'remaining_ms'
+        if remaining_ms <= 0 and delivered < total_trash:
             overlay = pygame.Surface((W, H), pygame.SRCALPHA)
             overlay.fill((0, 0, 0, 160))
             screen.blit(overlay, (0, 0))
@@ -582,3 +636,4 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str = "EcoGuardian"
             return {"estado": "tiempo_agotado", "recolectadas": delivered}
 
         pygame.display.flip()
+        

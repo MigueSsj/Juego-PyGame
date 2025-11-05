@@ -1,7 +1,7 @@
 from __future__ import annotations
 import pygame, random, re, math
 from pathlib import Path
-from typing import Optional, List, Tuple
+from typing import Optional, List, Tuple, Dict, Any
 
 try:
     # Esta función espera (nombre_sfx, assets_dir)
@@ -10,8 +10,9 @@ except Exception:
     # Esta función 'falsa' aceptará cualquier argumento y no hará nada
     def play_sfx(*args, **kwargs): pass
 
-# ---------- helpers assets ----------
+# === FUNCIONES DE AYUDA PARA CARGAR IMÁGENES (Se quedan fuera) ===
 def find_by_stem(assets_dir: Path, stem: str) -> Optional[Path]:
+    """Busca una imagen por el 'stem' (nombre sin extensión)."""
     exts = (".png", ".jpg", ".jpeg")
     for ext in exts:
         p = assets_dir / f"{stem}{ext}"
@@ -23,6 +24,7 @@ def find_by_stem(assets_dir: Path, stem: str) -> Optional[Path]:
     return min(cands, key=lambda p: len(p.name)) if cands else None
 
 def load_image(assets_dir: Path, stems: List[str]) -> Optional[pygame.Surface]:
+    """Carga la primera imagen que encuentre de una lista de nombres."""
     for stem in stems:
         p = find_by_stem(assets_dir, stem)
         if p:
@@ -36,37 +38,29 @@ def scale_to_width(img: pygame.Surface, new_w: int) -> pygame.Surface:
     r = new_w / img.get_width()
     return pygame.transform.smoothscale(img, (new_w, int(img.get_height() * r)))
 
+# === CONSTANTES DEL NIVEL (Se quedan fuera) ===
 ASSET_STEMS = {
     "fondo":   ["n2_fondo_calle"],
     "hoyo":    ["n2_hoyo"],
     "semilla": ["n2_semilla"],
     "arbol":   ["n2_arbol"],
     "victoria":["n2_victoria_calle_verde"],
+    "timer_panel": ["temporizador", "timer_panel", "panel_tiempo", "TEMPORAZIDOR"],
 }
-
-# ---------- posiciones y reglas nivel ----------
-
-# ***** Posiciones como las dejaste *****
 HOLE_POSITIONS_DEFAULT = [
-    (280, 360),   # Arriba-izquierda (Se queda igual)
-    (760, 360),   # Arriba-centro 
-    (1220, 360),  # Arriba-derecha (Se queda igual)
-    (240, 640),   # Abajo-izquierda (Este se queda igual)
-    (1365, 700)   # Abajo-derecha (Se queda igual)
+    (280, 360), (730, 360), (1220, 360), (240, 640), (1365, 700)
 ]
-
-# Áreas donde aparecen las semillas (césped superior y calle)
 SEED_SPAWN_AREAS = [
-    pygame.Rect(80, 380, 1200, 80), # Área superior (césped, Y: 380-460)
-    pygame.Rect(80, 540, 1200, 140), # Área inferior (calle, Y: 540-680)
+    pygame.Rect(80, 380, 1200, 80), # Césped
+    pygame.Rect(80, 540, 1200, 140), # Calle
 ]
-
-# ***** CAMBIO 2: Reducir el número de semillas *****
-SEEDS_TO_SPAWN = 5 # Estaba en 6
+SEEDS_TO_SPAWN = 5
+TOTAL_HOLES = len(HOLE_POSITIONS_DEFAULT)
 GROW_STEPS = 3
 GROW_TIME_PER_STEP = 220  # ms
 
-# ---------- cargador de frames + Player (como en nivel 1) ----------
+# === CLASES (Se quedan fuera) ===
+
 def load_char_frames(assets_dir: Path, target_h: int, *, char_folder: str = "PERSONAJE H") -> dict[str, list[pygame.Surface] | pygame.Surface]:
     char_dir = assets_dir / char_folder
     if not char_dir.exists():
@@ -167,13 +161,12 @@ class Player(pygame.sprite.Sprite):
         self.anim_timer = 0.0
         self.anim_dt = 1.0 / max(1.0, anim_fps)
         idle = self.frames.get("idle_down")
-        start_img = idle if isinstance(idle, pygame.Surface) else (self.frames["down"][0] if self.frames.get("down") else pygame.Surface((40,60), pygame.SRCALPHA))
-        self.image = start_img
+        start_img = idle if isinstance(idle, pygame.Surface) else (self.frames["down"][0] if self.frames["down"] else pygame.Surface((40,60), pygame.SRCALPHA))
+        self.image = start_img # type: ignore[assignment]
         self.rect = self.image.get_rect(center=pos)
         self.speed = speed
         self.bounds = bounds
-        
-        self.carrying_image: Optional[pygame.Surface] = None # Imagen a dibujar en la mano
+        self.carrying_image: Optional[pygame.Surface] = None
 
     def handle_input(self, dt: float):
         k = pygame.key.get_pressed()
@@ -183,55 +176,38 @@ class Player(pygame.sprite.Sprite):
 
         if moving:
             l = math.hypot(dx, dy);  dx, dy = dx / l, dy / l
-            
-            # Lógica de dirección (v1) que funciona para tus assets
-            if abs(dx) >= abs(dy):
-                self.dir = "left" if dx > 0 else "right"
-            else:
-                self.dir = "down" if dy > 0 else "up"
-
+            if abs(dx) >= abs(dy): self.dir = "left" if dx > 0 else "right"
+            else: self.dir = "down" if dy > 0 else "up"
             self.rect.x += int(dx * self.speed * dt)
             self.rect.y += int(dy * self.speed * dt)
             self.rect.clamp_ip(self.bounds)
-
             self.anim_timer += dt
             if self.anim_timer >= self.anim_dt:
                 self.anim_timer -= self.anim_dt
                 seq: list[pygame.Surface] = self.frames.get(self.dir, []) # type: ignore[assignment]
-                if seq:
-                    self.frame_idx = (self.frame_idx + 1) % len(seq)
-
+                if seq: self.frame_idx = (self.frame_idx + 1) % len(seq)
             seq: list[pygame.Surface] = self.frames.get(self.dir, []) # type: ignore[assignment]
-            if seq:
-                self.image = seq[self.frame_idx % len(seq)]
+            if seq: self.image = seq[self.frame_idx % len(seq)]
         else:
             idle_key = f"idle_{self.dir}"
             idle_img = self.frames.get(idle_key)
-            if isinstance(idle_img, pygame.Surface):
-                self.image = idle_img
+            if isinstance(idle_img, pygame.Surface): self.image = idle_img
             else:
                 seq: list[pygame.Surface] = self.frames.get(self.dir, []) # type: ignore[assignment]
                 self.image = seq[0] if seq else self.image
             self.frame_idx = 0
-
         new_midbottom = self.rect.midbottom
         self.rect = self.image.get_rect(midbottom=new_midbottom)
         self.rect.clamp_ip(self.bounds)
 
     def _get_carry_anchor(self) -> tuple[int, int]:
-        """Calcula dónde dibujar la semilla (anclaje en las manos)."""
         rect = self.rect
         cx, cy = rect.centerx, rect.centery
         cy = rect.centery + int(rect.height * 0.22)
-        
-        if self.dir == "left":
-            cx -= int(rect.width * 0.12); cy += int(rect.height * 0.02)
-        elif self.dir == "right":
-            cx += int(rect.width * 0.12); cy += int(rect.height * 0.02)
-        elif self.dir == "up":
-            cy += int(rect.height * 0.06)
-        else: # down
-            cy += int(rect.height * 0.04)
+        if self.dir == "left": cx -= int(rect.width * 0.12); cy += int(rect.height * 0.02)
+        elif self.dir == "right": cx += int(rect.width * 0.12); cy += int(rect.height * 0.02)
+        elif self.dir == "up": cy += int(rect.height * 0.06)
+        else: cy += int(rect.height * 0.04)
         return cx, cy
 
     def draw(self, surf: pygame.Surface):
@@ -241,8 +217,6 @@ class Player(pygame.sprite.Sprite):
             anchor_rect = self.carrying_image.get_rect(center=(cx, cy))
             surf.blit(self.carrying_image, anchor_rect)
 
-
-# ---------- entidades del nivel ----------
 class Seed:
     def __init__(self, pos: Tuple[int,int], img: pygame.Surface):
         self.image = img
@@ -258,9 +232,7 @@ class Hole:
         self.has_tree = False
         self.grow_timer = 0
         self.grow_step = 0
-    
     def start_grow(self): self.grow_step, self.grow_timer = 1, 1
-    
     def update(self, dt: int, assets_dir: Path):
         if self.grow_timer > 0 and not self.has_tree:
             self.grow_timer += dt
@@ -271,22 +243,13 @@ class Hole:
                     self.grow_step = GROW_STEPS 
                     self.has_tree = True
                     play_sfx("sfx_grow", assets_dir)
-    
-    def draw(self, surf: pygame.Surface, highlight_surf: Optional[pygame.Surface],
-             arbol_img: pygame.Surface, semilla_img: pygame.Surface):
-        
+    def draw(self, surf: pygame.Surface, arbol_img: pygame.Surface, semilla_img: pygame.Surface):
         surf.blit(self.base_img, self.rect)
-            
         cx, cy = self.rect.center
-        
-        # ***** CORRECCIÓN PARA ÁRBOL FLOTANTE (¡EL ÚLTIMO TOQUE!) *****
-        # Aumentamos el offset de 40% a 43% para que baje ese "casi nada".
-        offset_y = int(self.rect.height * 0.43) # <-- ¡CAMBIO AQUÍ! (Era 0.40)
+        offset_y = int(self.rect.height * 0.43) 
         tree_midbottom_y = cy + offset_y 
-        
         if not self.has_tree and self.grow_timer > 0:
             if self.grow_step == 1:
-                # La semilla también la bajamos (usando el nuevo ancla) para que quede dentro
                 surf.blit(semilla_img, semilla_img.get_rect(center=(cx, tree_midbottom_y - 6))) 
             elif self.grow_step == 2:
                 small = pygame.transform.smoothscale(arbol_img, (int(arbol_img.get_width()*0.45), int(arbol_img.get_height()*0.45)))
@@ -297,7 +260,6 @@ class Hole:
         elif self.has_tree:
             surf.blit(arbol_img, arbol_img.get_rect(midbottom=(cx, tree_midbottom_y)))
 
-# ---------- util ----------
 def random_point_in_rect(r: pygame.Rect) -> Tuple[int,int]:
     return (random.randint(r.left+8, r.right-8), random.randint(r.top+8, r.bottom-8))
 
@@ -314,175 +276,336 @@ def non_overlapping_spawn(rects_to_avoid: List[pygame.Rect], areas: List[pygame.
         pts.append(p)
     return pts
 
-# ---------- estado del nivel ----------
-class Nivel2Facil:
-    def __init__(self, screen: pygame.Surface, assets_dir: Path,
-                 hole_positions: Optional[List[Tuple[int,int]]] = None,
-                 *, char_folder: str = "PERSONAJE H"):
+# ==================================================================
+# === ¡AQUÍ COMIENZA LA NUEVA FUNCIÓN 'RUN' QUE LO CONTIENE TODO! ===
+# ==================================================================
+
+def run(screen: pygame.Surface, assets_dir: Path, personaje: str = "EcoGuardian", dificultad: str = "Fácil"):
+    
+    # --- 1. Inicialización (lógica del __init__) ---
+    pygame.font.init()
+    clock = pygame.time.Clock()
+    W, H = screen.get_size()
+
+    # Cargar fuentes
+    font = pygame.font.SysFont("arial", 26, bold=True)
+    big_font = pygame.font.SysFont("arial", 54, bold=True)
+    timer_font = pygame.font.SysFont("arial", 42, bold=True)
+
+    # Cargar imágenes
+    try:
+        img_fondo    = load_image(assets_dir, ASSET_STEMS["fondo"]);    assert img_fondo
+        img_hoyo     = load_image(assets_dir, ASSET_STEMS["hoyo"]);     assert img_hoyo
+        img_semilla  = load_image(assets_dir, ASSET_STEMS["semilla"]);  assert img_semilla
+        img_arbol    = load_image(assets_dir, ASSET_STEMS["arbol"]);    assert img_arbol
+        img_victoria = load_image(assets_dir, ASSET_STEMS["victoria"]); assert img_victoria
+        timer_panel_img = load_image(assets_dir, ASSET_STEMS["timer_panel"])
+    except Exception as e:
+        print(f"Error fatal cargando imágenes del Nivel 2: {e}")
+        return # Salir si faltan assets
         
-        self.screen = screen
-        self.assets_dir = assets_dir # Guardamos esto para usarlo en el sonido
+    # Escalar imágenes
+    img_fondo = pygame.transform.scale(img_fondo, screen.get_size())
+    img_victoria = pygame.transform.scale(img_victoria, screen.get_size())
+    img_hoyo = scale_to_width(img_hoyo, 66)
+    img_semilla = scale_to_width(img_semilla, 44)
+    img_arbol = scale_to_width(img_arbol, 180)
 
-        self.img_fondo    = load_image(assets_dir, ASSET_STEMS["fondo"]);    assert self.img_fondo, "Falta n2_fondo_calle.*"
-        self.img_hoyo     = load_image(assets_dir, ASSET_STEMS["hoyo"]);     assert self.img_hoyo, "Falta n2_hoyo.*"
-        self.img_semilla  = load_image(assets_dir, ASSET_STEMS["semilla"]);  assert self.img_semilla, "Falta n2_semilla.*"
-        self.img_arbol    = load_image(assets_dir, ASSET_STEMS["arbol"]);    assert self.img_arbol, "Falta n2_arbol.*"
-        self.img_victoria = load_image(assets_dir, ASSET_STEMS["victoria"]); assert self.img_victoria, "Falta n2_ victoria_calle_verde.*"
+    # Crear Jugador
+    target_h = max(40, int(H * 0.16))
+    frames = load_char_frames(assets_dir, target_h=target_h, char_folder="PERSONAJE H")
+    player = Player(frames, (120, 490), screen.get_rect(), speed=320, anim_fps=8.0)
 
-        self.img_fondo = pygame.transform.scale(self.img_fondo, self.screen.get_size())
+    # Crear Hoyos y Semillas
+    holes: List[Hole] = [Hole(p, img_hoyo) for p in HOLE_POSITIONS_DEFAULT]
+    avoid = [h.rect for h in holes]
+    seed_pts = non_overlapping_spawn(avoid, SEED_SPAWN_AREAS, SEEDS_TO_SPAWN)
+    seeds: List[Seed] = [Seed(p, img_semilla) for p in seed_pts]
+
+    # Variables de estado del juego
+    carrying_seed = False
+    victory = False
+    victory_timer = 0
+    total_semillas_plantadas = 0
+    total_hoyos = len(holes)
+
+    # Variables de Timer y Pausa
+    TOTAL_MS = 80_000
+    remaining_ms = TOTAL_MS
+    game_over = False
+    game_over_timer_ms = 1200 # 1.2 segundos para mostrar "Game Over"
+    paused = False
+    
+    # Assets del Menú de Pausa
+    pause_assets_dir = assets_dir / "PAUSA"
+    pausa_panel_img = load_image(pause_assets_dir, ["nivelA 2", "panel_pausa", "pausa_panel"])
+    pause_button_assets = {
+        "cont_base": None, "cont_hover": None,
+        "restart_base": None, "restart_hover": None,
+        "menu_base": None, "menu_hover": None,
+    }
+    
+    # --- 2. Funciones Anidadas (Helpers) ---
+
+    def reset_level():
+        """Reinicia el nivel a su estado inicial."""
+        nonlocal seeds, holes, player, carrying_seed, victory, victory_timer
+        nonlocal total_semillas_plantadas, remaining_ms, game_over, paused
         
-        # ***** CAMBIO 3: Escalar victoria a pantalla completa *****
-        self.img_victoria = pygame.transform.scale(self.img_victoria, self.screen.get_size())
-
-
-        HOLE_WIDTH = 66
-        SEED_WIDTH = 44
+        player.rect.center = (120, 490)
+        player.carrying_image = None
         
-        # ***** CAMBIO 1: Aumentar tamaño del árbol *****
-        # Lo subí de 90 a 180 para que coincida con los árboles del fondo
-        TREE_WIDTH = 180 # <--- ¡CAMBIO AQUÍ! 
+        carrying_seed = False
+        victory = False
+        victory_timer = 0
+        total_semillas_plantadas = 0
+        remaining_ms = TOTAL_MS
+        game_over = False
+        paused = False
         
-        self.img_hoyo = scale_to_width(self.img_hoyo, HOLE_WIDTH)
-        self.img_semilla = scale_to_width(self.img_semilla, SEED_WIDTH)
-        # Escalar el árbol al nuevo ancho definido
-        self.img_arbol = scale_to_width(self.img_arbol, TREE_WIDTH)
-
-        target_h = max(40, int(self.screen.get_height() * 0.16))
-        frames = load_char_frames(assets_dir, target_h=target_h, char_folder=char_folder)
-        self.player = Player(frames, (120, 490), self.screen.get_rect(), speed=320, anim_fps=8.0)
-
-        # Aquí se usan las nuevas posiciones
-        pos_list = hole_positions if hole_positions else HOLE_POSITIONS_DEFAULT
-        self.holes: List[Hole] = [Hole(p, self.img_hoyo) for p in pos_list]
-
-        avoid = [h.rect for h in self.holes]
+        holes = [Hole(p, img_hoyo) for p in HOLE_POSITIONS_DEFAULT]
+        avoid = [h.rect for h in holes]
         seed_pts = non_overlapping_spawn(avoid, SEED_SPAWN_AREAS, SEEDS_TO_SPAWN)
-        self.seeds: List[Seed] = [Seed(p, self.img_semilla) for p in seed_pts]
+        seeds = [Seed(p, img_semilla) for p in seed_pts]
 
-        self.carrying_seed = False
-        self.victory = False
-        self.victory_timer = 0
-
-    def update(self, dt_ms: int) -> Optional[str]:
-        for ev in pygame.event.get():
-            if ev.type == pygame.QUIT: return "quit"
-            if ev.type == pygame.KEYDOWN:
-                if ev.key == pygame.K_SPACE: return "pause"
-                if ev.key == pygame.K_e: self._try_interact()
-
-        # No actualizar el player si ya ganamos
-        if not self.victory:
-            self.player.handle_input(dt_ms / 1000.0)
-        
-        for h in self.holes: h.update(dt_ms, self.assets_dir)
-
-        all_grown = all(h.has_tree for h in self.holes)
-        if all_grown and len(self.holes) > 0 and not self.victory:
-            self.victory, self.victory_timer = True, 1800
-            play_sfx("sfx_grow", self.assets_dir)
-            
-        if self.victory:
-            self.victory_timer -= dt_ms
-            if self.victory_timer <= 0:
-                return "home"
-        return None
-
-    def _try_interact(self):
-        # No permitir interacción si ya ganamos
-        if self.victory: return
+    def _try_interact():
+        """Lógica para recoger o plantar semillas."""
+        nonlocal carrying_seed, total_semillas_plantadas
+        if victory or game_over: return
         
         try:
+            player_center = player.rect.center
             # 1. Intentar recoger una semilla
-            if not self.carrying_seed:
-                player_center = self.player.rect.center
+            if not carrying_seed:
                 closest_seed: Optional[Seed] = None
                 min_dist_sq = float('inf')
-
-                for s in self.seeds:
-                    if not s.taken and self.player.rect.colliderect(s.rect):
+                for s in seeds:
+                    if not s.taken and player.rect.colliderect(s.rect):
                         dist_sq = (player_center[0] - s.rect.centerx)**2 + (player_center[1] - s.rect.centery)**2
                         if dist_sq < min_dist_sq:
-                            min_dist_sq = dist_sq
-                            closest_seed = s
-                
+                            min_dist_sq = dist_sq; closest_seed = s
                 if closest_seed:
                     closest_seed.taken = True
-                    self.carrying_seed = True
-                    self.player.carrying_image = self.img_semilla
-                    play_sfx("sfx_pick_seed", self.assets_dir)
+                    carrying_seed = True
+                    player.carrying_image = img_semilla
+                    play_sfx("sfx_pick_seed", assets_dir)
                     return
             
             # 2. Intentar plantar una semilla
-            if self.carrying_seed:
-                player_center = self.player.rect.center
+            if carrying_seed:
                 closest_hole: Optional[Hole] = None
                 min_dist_sq = float('inf')
-                
-                for h in self.holes:
-                    if not h.has_tree and h.grow_timer == 0 and self.player.rect.colliderect(h.rect.inflate(20,20)):
+                for h in holes:
+                    if not h.has_tree and h.grow_timer == 0 and player.rect.colliderect(h.rect.inflate(20,20)):
                         dist_sq = (player_center[0] - h.rect.centerx)**2 + (player_center[1] - h.rect.centery)**2
                         if dist_sq < min_dist_sq:
-                            min_dist_sq = dist_sq
-                            closest_hole = h
-
+                            min_dist_sq = dist_sq; closest_hole = h
                 if closest_hole:
-                    self.carrying_seed = False
-                    self.player.carrying_image = None
+                    carrying_seed = False
+                    player.carrying_image = None
                     closest_hole.start_grow()
-                    play_sfx("sfx_plant", self.assets_dir)
+                    total_semillas_plantadas += 1
+                    play_sfx("sfx_plant", assets_dir)
                     return
-        
         except Exception as e:
-            print(f"ADVERTENCIA: Ocurrió un error durante la interacción: {e}")
+            print(f"ADVERTENCIA: Interacción: {e}")
 
-
-    def draw(self):
-        # ***** CAMBIO 3: Lógica de dibujado para victoria *****
-        if self.victory:
-            # Si se ganó, mostrar solo la imagen de victoria (ya escalada)
-            self.screen.blit(self.img_victoria, (0, 0))
-        else:
-            # Dibujado normal del juego
-            self.screen.blit(self.img_fondo, (0,0))
-            for s in self.seeds: s.draw(self.screen)
-            for h in self.holes: h.draw(self.screen, None, self.img_arbol, self.img_semilla)
-            self.player.draw(self.screen)
-            
-            font = pygame.font.SysFont(None, 22)
-            hint = font.render("Flechas/WASD: mover | E: recoger/plantar | Espacio: pausa", True, (240,240,240))
-            self.screen.blit(hint, (16, self.screen.get_height()-28))
-        
-# --- demo opcional ---
-def run_demo():
-    pygame.init()
-    pygame.font.init() # Asegurar que las fuentes estén listas
-    screen = pygame.display.set_mode((1366, 768))
-    clock = pygame.time.Clock()
-    
-    assets_dir = Path(".")
-    if not (assets_dir / "assets").exists():
-        assets_dir = Path("..")
-        if not (assets_dir / "assets").exists():
-            print("Error: No se encuentra la carpeta 'assets'")
-            print("Asegúrate de que 'assets' esté junto a este script o en la carpeta superior.")
-            return
-
-    assets_path = assets_dir / "assets"
-    
-    try:
-        level = Nivel2Facil(screen, assets_path, char_folder="PERSONAJE H")
-    except Exception as e:
-        print(f"Error al cargar el nivel. ¿Faltan assets o la carpeta del personaje?")
-        print(f"Error: {e}")
-        return
-        
+    # --- 3. Bucle Principal del Juego ---
     running = True
     while running:
-        dt = clock.tick(60)
-        res = level.update(dt)
-        if res in ("quit", "home"): running = False
-        level.draw(); pygame.display.flip()
-    pygame.quit()
+        dt_ms = clock.tick(60)
+        dt_sec = dt_ms / 1000.0
+        
+        mouse_click = False
+        mouse_pos = pygame.mouse.get_pos()
+        
+        # --- Manejo de Eventos ---
+        for ev in pygame.event.get():
+            if ev.type == pygame.QUIT:
+                running = False
+            
+            if paused:
+                # --- Eventos en Pausa ---
+                if ev.type == pygame.MOUSEBUTTONDOWN and ev.button == 1: mouse_click = True
+                if ev.type == pygame.KEYDOWN:
+                    if ev.key == pygame.K_SPACE:
+                        paused = False
+                        play_sfx("sfx_click", assets_dir)
+                    if ev.key == pygame.K_ESCAPE:
+                        running = False # Salir
+            
+            else:
+                # --- Eventos en Juego ---
+                if not game_over and not victory:
+                    if ev.type == pygame.KEYDOWN:
+                        if ev.key == pygame.K_ESCAPE:
+                            running = False
+                        if ev.key == pygame.K_SPACE:
+                            paused = True
+                            play_sfx("sfx_click", assets_dir)
+                        if ev.key == pygame.K_e or ev.key == pygame.K_RETURN:
+                            _try_interact()
 
-if __name__ == "__main__":
-    run_demo()
+        # --- Lógica de Update ---
+        if not paused and not game_over:
+            if remaining_ms > 0:
+                remaining_ms -= dt_ms
+                remaining_ms = max(0, remaining_ms)
+                
+                if not victory:
+                    player.handle_input(dt_sec)
+                for h in holes: h.update(dt_ms, assets_dir)
+                
+                all_grown = total_semillas_plantadas >= total_hoyos
+                if all_grown and not victory:
+                    victory, victory_timer = True, 1800
+                    play_sfx("sfx_grow", assets_dir)
+                    
+                if victory:
+                    victory_timer -= dt_ms
+                    if victory_timer <= 0:
+                        running = False # Victoria, salir del nivel
+            
+            else:
+                # El tiempo se acabó
+                if not victory:
+                    game_over = True
+                    game_over_timer_ms = 1200 # Iniciar contador de salida
+        
+        if game_over and not paused: # Contar solo si no está en pausa
+            game_over_timer_ms -= dt_ms
+            if game_over_timer_ms <= 0:
+                running = False # Salir después del conteo
+
+        # --- Lógica de Dibujado ---
+        if victory:
+            screen.blit(img_victoria, (0, 0))
+        else:
+            screen.blit(img_fondo, (0,0))
+            for s in seeds: s.draw(screen)
+            for h in holes: h.draw(screen, img_arbol, img_semilla)
+            player.draw(screen)
+            
+            # HUD (Contador y Controles)
+            hud = [
+                "Nivel 2 – La Calle (Fácil, con tiempo)",
+                "Mover: WASD/Flechas | Recoger/Plantar: E / Enter | Pausa: Espacio",
+                f"Plantadas: {total_semillas_plantadas} / {total_hoyos}",
+            ]
+            for i, line in enumerate(hud):
+                shadow = font.render(line, True, (15, 15, 15))
+                screen.blit(shadow, (16 + 2, 25 + 2 + i * 26))
+                text = font.render(line, True, (255, 255, 255))
+                screen.blit(text, (16, 25 + i * 26))
+
+        # Dibujar Timer
+        mm = remaining_ms // 1000 // 60
+        ss = (remaining_ms // 1000) % 60
+        time_str = f"{mm}:{ss:02d}"
+        margin = int(W * 0.04)
+        panel_w, panel_h = int(W * 0.18), int(H * 0.11)
+        panel_rect = pygame.Rect(W - margin - panel_w, margin, panel_w, panel_h)
+
+        if timer_panel_img:
+            scaled = pygame.transform.smoothscale(timer_panel_img, (panel_rect.w, panel_rect.h))
+            screen.blit(scaled, panel_rect.topleft)
+        else:
+            pygame.draw.rect(screen, (30, 20, 15), panel_rect, border_radius=10)
+            inner = panel_rect.inflate(-10, -10)
+            pygame.draw.rect(screen, (210, 180, 140), inner, border_radius=8)
+            pygame.draw.rect(screen, (30, 20, 15), inner, 3, border_radius=8)
+
+        txt = timer_font.render(time_str, True, (20, 15, 10))
+        sh  = timer_font.render(time_str, True, (0, 0, 0))
+        cx = panel_rect.centerx - int(panel_rect.w * 0.12)
+        cy = panel_rect.centery
+        screen.blit(sh,  sh.get_rect(center=(cx + 2, cy + 2)))
+        screen.blit(txt, txt.get_rect(center=(cx, cy)))
+
+        # Dibujar "Tiempo Agotado" (si aplica)
+        if game_over:
+            overlay = pygame.Surface((W, H), pygame.SRCALPHA)
+            overlay.fill((0, 0, 0, 160))
+            screen.blit(overlay, (0, 0))
+            msg = big_font.render("¡Tiempo agotado!", True, (255, 255, 255))
+            screen.blit(msg, msg.get_rect(center=(W // 2, H // 2 - 10)))
+
+        # Dibujar Menú de Pausa (si aplica, se dibuja ENCIMA de todo)
+        if paused:
+            # Poner el overlay de pausa (solo si no estamos ya en game over)
+            if not game_over:
+                overlay = pygame.Surface((W, H), pygame.SRCALPHA)
+                overlay.fill((0, 0, 0, 160))
+                screen.blit(overlay, (0, 0))
+            
+            # Dibujar el panel y los botones
+            panel_w2, panel_h2 = int(W * 0.52), int(H * 0.52)
+            panel2 = pygame.Rect(W//2 - panel_w2//2, H//2 - panel_h2//2, panel_w2, panel_h2)
+            
+            panel_scaled = None
+            if pausa_panel_img:
+                panel_scaled = pygame.transform.smoothscale(pausa_panel_img, (panel_w2, panel_h2))
+                screen.blit(panel_scaled, panel2)
+            else:
+                pygame.draw.rect(screen, (30, 20, 15), panel2, border_radius=16)
+
+            btn_w, btn_h = int(panel_w2 * 0.80), int(panel_h2 * 0.18)
+            cx = panel2.centerx
+            y_cont    = panel2.top + int(panel_h2 * 0.40)
+            y_restart = panel2.top + int(panel_h2 * 0.60)
+            y_menu    = panel2.top + int(panel_h2 * 0.80)
+            r_cont    = pygame.Rect(0, 0, btn_w, btn_h); r_cont.center    = (cx, y_cont)
+            r_restart = pygame.Rect(0, 0, btn_w, btn_h); r_restart.center = (cx, y_restart)
+            r_menu    = pygame.Rect(0, 0, btn_w, btn_h); r_menu.center    = (cx, y_menu)
+
+            # Lógica de "recortar" botones
+            if pause_button_assets["cont_base"] is None and panel_scaled:
+                try:
+                    r_cont_local    = r_cont.move(-panel2.x, -panel2.y)
+                    r_restart_local = r_restart.move(-panel2.x, -panel2.y)
+                    r_menu_local    = r_menu.move(-panel2.x, -panel2.y)
+                    base_cont    = panel_scaled.subsurface(r_cont_local)
+                    base_restart = panel_scaled.subsurface(r_restart_local)
+                    base_menu    = panel_scaled.subsurface(r_menu_local)
+                    pause_button_assets["cont_base"] = base_cont
+                    pause_button_assets["restart_base"] = base_restart
+                    pause_button_assets["menu_base"] = base_menu
+                    hover_w, hover_h = int(r_cont.w * 1.05), int(r_cont.h * 1.05)
+                    pause_button_assets["cont_hover"] = pygame.transform.smoothscale(base_cont, (hover_w, hover_h))
+                    pause_button_assets["restart_hover"] = pygame.transform.smoothscale(base_restart, (hover_w, hover_h))
+                    pause_button_assets["menu_hover"] = pygame.transform.smoothscale(base_menu, (hover_w, hover_h))
+                except ValueError:
+                    pause_button_assets["cont_base"] = None
+            
+            # Función anidada para dibujar botones
+            def draw_btn(base_rect: pygame.Rect, hover_img: pygame.Surface) -> bool:
+                hov = base_rect.collidepoint(mouse_pos)
+                if hov and hover_img:
+                    hover_rect = hover_img.get_rect(center=base_rect.center)
+                    screen.blit(hover_img, hover_rect)
+                return hov and mouse_click
+
+            # Comprobar clics
+            if draw_btn(r_cont, pause_button_assets["cont_hover"]):
+                play_sfx("sfx_click", assets_dir)
+                paused = False
+            elif draw_btn(r_restart, pause_button_assets["restart_hover"]):
+                play_sfx("sfx_click", assets_dir)
+                reset_level()
+                paused = False
+            elif draw_btn(r_menu, pause_button_assets["menu_hover"]):
+                play_sfx("sfx_click", assets_dir)
+                running = False
+
+        # --- Actualizar pantalla ---
+        pygame.display.flip()
+            
+    # --- 4. Salida ---
+    # (El bucle terminó)
+    return {
+        "estado": "victoria" if victory else ("tiempo_agotado" if game_over else "menu"),
+        "plantadas": total_semillas_plantadas
+    }
+
+# --- ELIMINAMOS EL BLOQUE if __name__ == "__main__": ---
+# --- AHORA ESTE ARCHIVO ES SOLO UN MÓDULO PARA SER IMPORTADO ---
