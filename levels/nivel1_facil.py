@@ -1,8 +1,19 @@
-# levels/nivel1_facil.py
 from __future__ import annotations
 import pygame, math, random, re
 from pathlib import Path
 from typing import Optional
+
+# === CAMBIO: Importar funciones de música ===
+try:
+    from audio_shared import start_level_music, start_suspense_music, stop_level_music
+except ImportError:
+    print("WARN: No se pudo importar audio_shared. La música no funcionará.")
+    # Fallback para que el juego no crashee si audio_shared no está listo
+    def start_level_music(assets_dir: Path): pass
+    def start_suspense_music(assets_dir: Path): pass
+    def stop_level_music(): pass
+# ==========================================
+
 
 # ====== SFX click (VOLÚMEN AJUSTABLE) ======
 CLICK_VOL = 0.25   # <-- AJUSTA AQUÍ (0.0 = mudo, 1.0 = máximo)
@@ -93,7 +104,9 @@ def load_trash_images(assets_dir: Path) -> list[pygame.Surface]:
     return imgs
 
 # === Punto de anclaje para sostener la basura ===
+# === COPIADO DE NIVEL1_DIFICIL.PY ===
 def _carry_anchor(player: pygame.sprite.Sprite, carrying: pygame.sprite.Sprite) -> tuple[int, int]:
+    """Anclaje más bajo (palmas) con leve ajuste por dirección."""
     rect = player.rect
     cx, cy = rect.centerx, rect.centery
     cy = rect.centery + int(rect.height * 0.22)
@@ -104,7 +117,7 @@ def _carry_anchor(player: pygame.sprite.Sprite, carrying: pygame.sprite.Sprite) 
         cx += int(rect.width * 0.12); cy += int(rect.height * 0.02)
     elif d == "up":
         cy += int(rect.height * 0.06)
-    else:  # down
+    else:
         cy += int(rect.height * 0.04)
     return cx, cy
 
@@ -322,7 +335,7 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str = "EcoGuardian"
         trash_group.add(Trash(img, (x, y), int(W * 0.035)))
 
     # Personaje
-    frames = load_char_frames(assets_dir, target_h=int(H * 0.16))
+    frames = load_char_frames(assets_dir, target_h=int(H * 0.14))
     player = Player(frames, (int(W * 0.16), int(H * 0.75)), pygame.Rect(0, 0, W, H), speed=320, anim_fps=8.0)
 
     carrying: Optional[Trash] = None
@@ -336,10 +349,13 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str = "EcoGuardian"
 
     # =====================================================================
     # === CAMBIO 1: Lógica del temporizador ===
-    # Ya no usamos 'start_ms'. Usamos 'remaining_ms' para guardar el tiempo.
     # =====================================================================
     TOTAL_MS = 80_000
     remaining_ms = TOTAL_MS  # <-- Esta es ahora la variable principal del tiempo
+    
+    # === CAMBIO: Iniciar música de nivel ===
+    start_level_music(assets_dir)
+
 
     # === Panel del temporizador (arriba-derecha, más chico) ===
     timer_panel = None
@@ -366,10 +382,12 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str = "EcoGuardian"
     }
 
     # =====================================================================
-    # === CAMBIO 2: reset_level() ahora resetea 'remaining_ms' ===
+    # === CAMBIO 2: reset_level() ahora resetea 'remaining_ms' y música ===
     # =====================================================================
     def reset_level():
-        nonlocal trash_group, carrying, delivered, remaining_ms # <-- Añadido 'remaining_ms'
+        nonlocal trash_group, carrying, delivered, remaining_ms
+        # === CAMBIO: Añadir 'suspense_music_started' ===
+        nonlocal suspense_music_started
         trash_group.empty()
         for i in range(total_trash):
             x = random.randint(int(W * 0.18), int(W * 0.82))
@@ -379,6 +397,12 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str = "EcoGuardian"
         carrying = None
         delivered = 0
         remaining_ms = TOTAL_MS  # <-- Se resetea el tiempo
+        # === CAMBIO: Reiniciar estado de música ===
+        suspense_music_started = False
+        start_level_music(assets_dir)
+
+    # === CAMBIO: Variable de estado para música de suspenso ===
+    suspense_music_started = False
 
     while True:
         dt = min(clock.tick(60) / 1000.0, 0.033)
@@ -387,15 +411,18 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str = "EcoGuardian"
 
         # =====================================================================
         # === CAMBIO 3: Cálculo de tiempo ELIMINADO de aquí ===
-        # Ya no se calcula 'elapsed' ni 'remaining' aquí
         # =====================================================================
 
         for e in pygame.event.get():
             if e.type == pygame.QUIT:
+                # === CAMBIO: Detener música ===
+                stop_level_music()
                 return None
             if e.type == pygame.KEYDOWN:
                 if e.key == pygame.K_ESCAPE:
                     play_click(assets_dir)
+                    # === CAMBIO: Detener música ===
+                    stop_level_music()
                     return None
                 if e.key == pygame.K_SPACE:
                     paused = not paused
@@ -405,19 +432,25 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str = "EcoGuardian"
                     interact = True
 
         # =====================================================================
-        # === CAMBIO 4: Lógica del juego y actualización del timer ===
-        # Solo restamos tiempo de 'remaining_ms' si NO estamos en pausa.
+        # === CAMBIO 4: Lógica del juego y actualización del timer y música ===
         # =====================================================================
         if not paused and remaining_ms > 0:
             # Restamos el tiempo de este frame
             remaining_ms -= int(dt * 1000)
             remaining_ms = max(0, remaining_ms) # Nos aseguramos que no baje de 0
             
+            # === CAMBIO: Lógica del trigger de música de suspenso ===
+            if remaining_ms <= 30000 and not suspense_music_started:
+                start_suspense_music(assets_dir)
+                suspense_music_started = True
+
             player.handle_input(dt)
 
             if carrying:
                 carrying.carried = True
-                carrying.rect.center = (player.rect.centerx, player.rect.top + carrying.rect.height // 2 - 6)
+                # === CAMBIO: Usar _carry_anchor para la posición (EN LOS BRAZOS) ===
+                ax, ay = _carry_anchor(player, carrying)
+                carrying.rect.center = (ax, ay)
 
             if interact:
                 if not carrying:
@@ -425,7 +458,7 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str = "EcoGuardian"
                     best = 1e9
                     for tr in trash_group:
                         d = math.hypot(player.rect.centerx - tr.rect.centerx,
-                                       player.rect.centery - tr.rect.centery)
+                                        player.rect.centery - tr.rect.centery)
                         if d < best and d <= INTERACT_DIST:
                             best = d; nearest = tr
                     if nearest:
@@ -433,7 +466,7 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str = "EcoGuardian"
                         carrying.carried = True
                 else:
                     d = math.hypot(player.rect.centerx - bin_rect.centerx,
-                                   player.rect.centery - bin_rect.centery)
+                                    player.rect.centery - bin_rect.centery)
                     if d <= BIN_RADIUS * 1.2:
                         trash_group.remove(carrying)
                         carrying = None
@@ -471,7 +504,7 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str = "EcoGuardian"
         time_str = f"{mm}:{ss:02d}"
 
         margin = int(W * 0.04)
-        panel_w, panel_h = int(W * 0.18), int(H * 0.11)   # más corto y compacto
+        panel_w, panel_h = int(W * 0.18), int(H * 0.11)  # más corto y compacto
         panel_rect = pygame.Rect(W - margin - panel_w, margin, panel_w, panel_h)
 
         if timer_panel:
@@ -586,6 +619,8 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str = "EcoGuardian"
                 paused = False
             elif draw_btn(r_menu, pause_button_assets["menu_hover"]):
                 play_click(assets_dir)
+                # === CAMBIO: Detener música ===
+                stop_level_music()
                 return None
 
 
@@ -609,10 +644,16 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str = "EcoGuardian"
                     elapsed2 += dt2
                     for ev in pygame.event.get():
                         if ev.type == pygame.QUIT:
+                            # === CAMBIO: Detener música ===
+                            stop_level_music()
                             return {"estado": "completado", "recolectadas": total_trash}
                         if ev.type == pygame.KEYDOWN or (ev.type == pygame.MOUSEBUTTONDOWN and ev.button == 1):
                             play_click(assets_dir)
+                            # === CAMBIO: Detener música ===
+                            stop_level_music()
                             return {"estado": "completado", "recolectadas": total_trash}
+                # === CAMBIO: Detener música ===
+                stop_level_music()
                 return {"estado": "completado", "recolectadas": total_trash}
 
             overlay = pygame.Surface((W, H), pygame.SRCALPHA)
@@ -622,6 +663,8 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str = "EcoGuardian"
             screen.blit(wtxt, wtxt.get_rect(center=(W // 2, H // 2 - 10)))
             pygame.display.flip()
             pygame.time.delay(1200)
+            # === CAMBIO: Detener música ===
+            stop_level_music()
             return {"estado": "completado", "recolectadas": total_trash}
 
         # Comprueba la derrota usando 'remaining_ms'
@@ -633,7 +676,8 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str = "EcoGuardian"
             screen.blit(msg, msg.get_rect(center=(W // 2, H // 2 - 10)))
             pygame.display.flip()
             pygame.time.delay(1200)
+            # === CAMBIO: Detener música ===
+            stop_level_music()
             return {"estado": "tiempo_agotado", "recolectadas": delivered}
 
         pygame.display.flip()
-        

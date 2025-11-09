@@ -1,8 +1,19 @@
-# levels/nivel1_dificil.py
 from __future__ import annotations
 import pygame, math, random, re
 from pathlib import Path
 from typing import Optional
+
+# === CAMBIO: Importar funciones de música ===
+try:
+    from audio_shared import start_level_music, start_suspense_music, stop_level_music
+except ImportError:
+    print("WARN: No se pudo importar audio_shared. La música no funcionará.")
+    # Fallback para que el juego no crashee si audio_shared no está listo
+    def start_level_music(assets_dir: Path): pass
+    def start_suspense_music(assets_dir: Path): pass
+    def stop_level_music(): pass
+# ==========================================
+
 
 # ====== SFX click (VOLÚMEN AJUSTABLE) ======
 CLICK_VOL = 0.25
@@ -319,7 +330,7 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str = "EcoGuardian"
         trash_group.add(Trash(img, (x, y), int(W * 0.032)))
 
     # --- Personaje ---
-    frames = load_char_frames(assets_dir, target_h=int(H * 0.16))
+    frames = load_char_frames(assets_dir, target_h=int(H * 0.14))
     player = Player(frames, (int(W * 0.16), int(H * 0.75)), pygame.Rect(0, 0, W, H), speed=340, anim_fps=9.0)
 
     carrying: Optional[Trash] = None
@@ -333,6 +344,9 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str = "EcoGuardian"
     # =====================================================================
     TOTAL_MS = 80_000
     remaining_ms = TOTAL_MS  # <-- Usamos esta variable
+    
+    # === CAMBIO: Iniciar música de nivel ===
+    start_level_music(assets_dir)
 
     # --- Panel del temporizador (tu imagen) ---
     timer_panel = None
@@ -365,6 +379,8 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str = "EcoGuardian"
     # =====================================================================
     def reset_level():
         nonlocal trash_group, carrying, delivered, remaining_ms
+        # === CAMBIO: Añadir 'suspense_music_started' ===
+        nonlocal suspense_music_started
         trash_group.empty()
         # Usa los parámetros de 'dificil' (12 basuras, coords, tamaño)
         for i in range(total_trash):
@@ -375,9 +391,15 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str = "EcoGuardian"
         carrying = None
         delivered = 0
         remaining_ms = TOTAL_MS  # <-- Reinicia el tiempo
+        # === CAMBIO: Reiniciar estado de música ===
+        suspense_music_started = False
+        start_level_music(assets_dir)
 
     paused = False
     t = 0.0
+
+    # === CAMBIO: Variable de estado para música de suspenso ===
+    suspense_music_started = False
 
     while True:
         dt = min(clock.tick(60) / 1000.0, 0.033)
@@ -389,10 +411,14 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str = "EcoGuardian"
 
         for e in pygame.event.get():
             if e.type == pygame.QUIT:
+                # === CAMBIO: Detener música ===
+                stop_level_music()
                 return None
             if e.type == pygame.KEYDOWN:
                 if e.key == pygame.K_ESCAPE:
                     play_click(assets_dir)
+                    # === CAMBIO: Detener música ===
+                    stop_level_music()
                     return None
                 if e.key == pygame.K_SPACE:
                     paused = not paused
@@ -408,6 +434,11 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str = "EcoGuardian"
             remaining_ms -= int(dt * 1000)
             remaining_ms = max(0, remaining_ms)
             
+            # === CAMBIO: Lógica del trigger de música de suspenso ===
+            if remaining_ms <= 30000 and not suspense_music_started:
+                start_suspense_music(assets_dir)
+                suspense_music_started = True
+            
             player.handle_input(dt)
 
             if carrying:
@@ -421,7 +452,7 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str = "EcoGuardian"
                     best = 1e9
                     for tr in trash_group:
                         d = math.hypot(player.rect.centerx - tr.rect.centerx,
-                                       player.rect.centery - tr.rect.centery)
+                                        player.rect.centery - tr.rect.centery)
                         if d < best and d <= INTERACT_DIST:
                             best = d; nearest = tr
                     if nearest:
@@ -429,7 +460,7 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str = "EcoGuardian"
                         carrying.carried = True
                 else:
                     d = math.hypot(player.rect.centerx - bin_rect.centerx,
-                                   player.rect.centery - bin_rect.centery)
+                                    player.rect.centery - bin_rect.centery)
                     if d <= BIN_RADIUS * 1.15:
                         trash_group.remove(carrying)
                         carrying = None
@@ -568,6 +599,8 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str = "EcoGuardian"
                 paused = False
             elif draw_btn(r_menu, pause_button_assets["menu_hover"]):
                 play_click(assets_dir)
+                # === CAMBIO: Detener música ===
+                stop_level_music()
                 return None
 
 
@@ -592,10 +625,16 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str = "EcoGuardian"
                     elapsed2 += dt2
                     for ev in pygame.event.get():
                         if ev.type == pygame.QUIT:
+                            # === CAMBIO: Detener música ===
+                            stop_level_music()
                             return {"estado": "completado", "recolectadas": total_trash}
                         if ev.type == pygame.KEYDOWN or (ev.type == pygame.MOUSEBUTTONDOWN and ev.button == 1):
                             play_click(assets_dir)
+                            # === CAMBIO: Detener música ===
+                            stop_level_music()
                             return {"estado": "completado", "recolectadas": total_trash}
+                # === CAMBIO: Detener música ===
+                stop_level_music()
                 return {"estado": "completado", "recolectadas": total_trash}
             else:
                 overlay = pygame.Surface((W, H), pygame.SRCALPHA)
@@ -605,6 +644,8 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str = "EcoGuardian"
                 screen.blit(wtxt, wtxt.get_rect(center=(W // 2, H // 2 - 10)))
                 pygame.display.flip()
                 pygame.time.delay(1200)
+                # === CAMBIO: Detener música ===
+                stop_level_music()
                 return {"estado": "completado", "recolectadas": total_trash}
 
         # --- derrota por tiempo ---
@@ -616,6 +657,8 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str = "EcoGuardian"
             screen.blit(msg, msg.get_rect(center=(W // 2, H // 2 - 10)))
             pygame.display.flip()
             pygame.time.delay(1200)
+            # === CAMBIO: Detener música ===
+            stop_level_music()
             return {"estado": "tiempo_agotado", "recolectadas": delivered}
 
         pygame.display.flip()

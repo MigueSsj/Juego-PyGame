@@ -1,4 +1,3 @@
-# seleccion_personaje.py
 from __future__ import annotations
 import pygame
 from pathlib import Path
@@ -6,7 +5,7 @@ from typing import Optional, List, Tuple
 from audio_shared import play_sfx  # <<< usamos el banco SFX compartido
 import re
 
-# ===== helpers =====
+# ===== helpers (find_by_stem, load_image, scale_to_width) =====
 def find_by_stem(assets_dir: Path, stem: str) -> Optional[Path]:
     exts = (".png", ".jpg", ".jpeg")
     for ext in exts:
@@ -26,88 +25,25 @@ def load_image(assets_dir: Path, stems: list[str]) -> Optional[pygame.Surface]:
             return img.convert_alpha() if p.suffix.lower() == ".png" else img.convert()
     return None
 
-def scale_to_height(img: pygame.Surface, target_h: int) -> tuple[int, int]:
-    h = target_h
-    w = int(img.get_width() * (h / img.get_height()))
-    return (w, h)
+def scale_to_width(img: pygame.Surface, new_w: int) -> pygame.Surface:
+    if img.get_width() == 0: return pygame.Surface((new_w, int(new_w*1.5)))
+    r = new_w / img.get_width()
+    return pygame.transform.smoothscale(img, (new_w, int(img.get_height() * r)))
 
-def scale_to_width(img: pygame.Surface, target_w: int) -> tuple[int, int]:
-    w = target_w
-    h = int(img.get_height() * (w / img.get_width()))
-    return (w, h)
+def scale_to_height(img: pygame.Surface, new_h: int) -> pygame.Surface:
+    """Escala una imagen a una nueva altura, manteniendo la proporción."""
+    if img.get_height() == 0: return pygame.Surface((int(new_h*0.75), new_h))
+    r = new_h / img.get_height()
+    return pygame.transform.smoothscale(img, (int(img.get_width() * r), new_h))
 
 def _scale_to_fit(img: pygame.Surface, box_w: int, box_h: int) -> pygame.Surface:
-    r = min(box_w / img.get_width(), box_h / img.get_height(), 1.0)
-    if r < 1.0:
-        return pygame.transform.smoothscale(img, (int(img.get_width() * r), int(img.get_height() * r)))
-    return img
+    if img.get_width() == 0 or img.get_height() == 0:
+        return pygame.Surface((box_w, box_h), pygame.SRCALPHA)
+    # Escalar para que quepa
+    r = min(box_w / img.get_width(), box_h / img.get_height())
+    return pygame.transform.smoothscale(img, (int(img.get_width() * r), int(img.get_height() * r)))
 
-def _find_person_images(assets_dir: Path) -> List[Path]:
-    """Busca candidatos en assets/personajes y, si no hay, en assets/."""
-    exts = (".png", ".jpg", ".jpeg")
-    res: List[Path] = []
-    for base in [assets_dir / "personajes", assets_dir]:
-        if not base.exists():
-            continue
-        for ext in exts:
-            res += list(base.glob(f"*{ext}"))
-    # Prioriza archivos que contengan 'frente'
-    def key(p: Path) -> Tuple[int, int]:
-        name = p.stem.lower()
-        return (0 if "frente" in name else 1, len(name))
-    res.sort(key=key)
-    return res
-
-def _pretty_name(p: Path) -> str:
-    """Convierte nombre de archivo a nombre visible."""
-    stem = p.stem.lower()
-    # mapeos comunes de tu proyecto
-    if "eco" in stem and ("_m" in stem or "-m" in stem or "eco_m" in stem or "mfrente" in stem or "m" in stem and "frente" in stem):
-        return "EcoGuardian (M)"
-    if "eco" in stem and ("_f" in stem or "-f" in stem or "eco_f" in stem or "f" in stem and "frente" in stem):
-        return "EcoGuardian (F)"
-    nice = stem.replace("frente", "").replace("_", " ").replace("-", " ").strip()
-    nice = " ".join(n for n in nice.split() if n)  # limpia dobles espacios
-    return nice.title() if nice else "Personaje"
-
-# ===== new helper: inferir carpeta de personaje =====
-def _infer_personaje_folder_from_candidate(path: Optional[Path], visible_name: str) -> str:
-    """
-    Devuelve 'PERSONAJE M' o 'PERSONAJE H' según heurística:
-    - busca indicadores en el nombre de archivo (p.ex. _m, -m, m, male)
-    - si no encuentra, intenta detectar (M)/(F) en visible_name
-    - por defecto devuelve PERSONAJE H
-    """
-    # 1) desde path/filename si está disponible
-    if path is not None and isinstance(path, Path):
-        stem = path.stem.lower()
-        # patrones comunes que indican masculino
-        if re.search(r"(_|\\b|-)m($|\\b)", stem) or re.search(r"\bm\b", stem):
-            return "PERSONAJE M"
-        if re.search(r"(_|\\b|-)f($|\\b)", stem) or re.search(r"\bf\b", stem):
-            return "PERSONAJE H"
-        if "male" in stem:
-            return "PERSONAJE M"
-        if "female" in stem or "fem" in stem:
-            return "PERSONAJE H"
-
-    # 2) desde el nombre visible (ej. "EcoGuardian (M)")
-    v = (visible_name or "").strip().lower()
-    if "(m)" in v or v.endswith(" m") or " m)" in v or " male" in v:
-        return "PERSONAJE M"
-    if "(f)" in v or v.endswith(" f") or " f)" in v or " female" in v:
-        return "PERSONAJE H"
-    # heurística simple: si contiene 'm' al final sin contener 'h', asumimos masculino
-    simple = re.sub(r"[^\w]", "", v)
-    if simple.endswith("m") and not simple.endswith("h"):
-        return "PERSONAJE M"
-    if simple.endswith("f") and not simple.endswith("m"):
-        return "PERSONAJE H"
-
-    # por defecto (si no podemos decidir) devolvemos H (femenino/backwards compat)
-    return "PERSONAJE H"
-
-# ===== botón =====
+# === Botón (El mismo que tenías) ===
 class Button:
     def __init__(self, rect: pygame.Rect, text: str, font: pygame.font.Font,
                  base_surf: pygame.Surface | None = None,
@@ -145,7 +81,41 @@ class Button:
             lbl = self.font.render(self.text, True, (25,20,15))
             surface.blit(lbl, lbl.get_rect(center=self.rect.center))
 
-# ===== Screen selección =====
+# === Helper para cargar 1 frame de preview ===
+def _load_character_preview(assets_dir: Path, char_folder: str, max_w: int, max_h: int) -> pygame.Surface:
+    """Carga un frame de preview (idle) de la carpeta del personaje."""
+    folder = assets_dir / char_folder
+    if not folder.exists():
+        print(f"WARN: No se encuentra la carpeta {char_folder}")
+        ph = pygame.Surface((max_w, max_h), pygame.SRCALPHA); ph.fill((0,0,0,0)); return ph # Placeholder transparente
+
+    # === CAMBIO: Priorizar 'ecoguardian_walk_down_1' ===
+    candidates = [
+        "ecoguardian_walk_down_1", # <-- ¡Prioridad!
+        "ecoguardian_down_idle", 
+        "ecoguardian_frente", 
+        "idle_down", 
+        "ecoguardian_walk_down_0",
+        "ecoguardian"
+    ]
+    # ===================================================
+    
+    img = None
+    for stem in candidates:
+        p = find_by_stem(folder, stem)
+        if p:
+            img = pygame.image.load(str(p))
+            img = img.convert_alpha() if p.suffix.lower()==".png" else img.convert()
+            break
+    
+    if img is None:
+        ph = pygame.Surface((max_w, max_h), pygame.SRCALPHA); ph.fill((0,0,0,0)) # Placeholder transparente
+        return ph
+        
+    return _scale_to_fit(img, max_w, max_h)
+
+
+# ===== Screen selección (REDISEÑADA) =====
 class SeleccionPersonajeScreen:
     def __init__(self, screen: pygame.Surface, assets_dir: Path):
         self.screen = screen
@@ -153,170 +123,234 @@ class SeleccionPersonajeScreen:
         self.w, self.h = self.screen.get_size()
         self.clock = pygame.time.Clock()
 
-        self.PAD_TOP    = int(self.h * 0.08)
-        self.PAD_BOTTOM = int(self.h * 0.08)
+        # === CAMBIO: Ajustar padding para subir todo AÚN MÁS ===
+        self.PAD_TOP    = int(self.h * 0.02) # Era 0.04
+        self.PAD_BOTTOM = int(self.h * 0.02) # Era 0.04
 
-        # Fondo (usa tu fondo principal si existe)
-        self.bg = load_image(assets_dir, ["Background_f", "bg_inicio", "fondo_inicio", "pantalla_inicio", "background_inicio", "fondo"])
+        # 1. Fondo (usamos el tuyo)
+        self.bg = load_image(assets_dir, ["Background_f", "bg_inicio", "fondo"])
         if self.bg is None:
             self.bg = pygame.Surface((self.w, self.h)); self.bg.fill((10,25,40))
         self.bg_scroll_x = 0.0
         self.bg_speed = 40.0
-        self.bg_scaled = pygame.transform.scale(self.bg, scale_to_height(self.bg, self.h))
+        bg_w = int(self.bg.get_width() * (self.h / self.bg.get_height()))
+        self.bg_scaled = pygame.transform.scale(self.bg, (bg_w, self.h))
 
-        # Fuentes
+        # 2. Fuentes
         pygame.font.init()
         self.font_title = pygame.font.SysFont("Arial", max(28, self.w//18), bold=True)
         self.font_btn   = pygame.font.SysFont("Arial", max(20, self.w//28), bold=True)
-        self.font_name  = pygame.font.SysFont("Arial", max(18, self.w//34), bold=True)
+        self.font_name  = pygame.font.SysFont("Arial", max(22, self.w//32), bold=True)
 
-        # Título
+        # 3. Título (el tuyo)
         self.title_img = load_image(self.assets_dir, ["title_personaje", "title_seleccion_personaje",
-                                                      "elige_personaje", "elija_personaje", "elige_tu_personaje"])
+                                                     "elige_personaje", "elija_personaje", "elige_tu_personaje"])
         if self.title_img:
-            self.title_img = pygame.transform.scale(self.title_img, scale_to_width(self.title_img, int(self.w*0.28)))
+            self.title_img = scale_to_width(self.title_img, int(self.w*0.40))
             self.title_rect = self.title_img.get_rect(center=(self.w//2, self.PAD_TOP + self.title_img.get_height()//2))
         else:
             self.title_img = None
+            self.title_rect = pygame.Rect(0,0,0,0) # dummy
 
-        # Botón Confirmar (con hover)
+        # 4. Botón Confirmar (el tuyo)
         btn_img = load_image(self.assets_dir, ["btn_confirmar", "confirmar", "btn_continuar", "continuar"])
         btn_base = btn_hover = None
-        btn_center = (self.w//2, self.h - self.PAD_BOTTOM - int(self.h * 0.06))
+        
+        # === CAMBIO: Botón más chico (Era 0.22) ===
+        desired_w = int(self.w * 0.20) 
+        
         if btn_img:
-            desired_w = int(self.w * 0.22)
-            btn_base = pygame.transform.scale(btn_img, scale_to_width(btn_img, desired_w))
-            btn_hover = pygame.transform.scale(btn_img, scale_to_width(btn_img, int(desired_w*1.08)))
-            rect = btn_base.get_rect(center=btn_center)
+            btn_base = scale_to_width(btn_img, desired_w)
+            btn_hover = scale_to_width(btn_img, int(desired_w*1.08))
+            rect = btn_base.get_rect()
         else:
-            rect = pygame.Rect(0, 0, int(self.w*0.28), int(self.h*0.10))
-            rect.center = btn_center
-        if rect.bottom > self.h - self.PAD_BOTTOM:
-            rect.bottom = self.h - self.PAD_BOTTOM
+            rect = pygame.Rect(0, 0, int(self.w*0.26), int(self.h*0.09)) # Fallback más chico
+        
+        # === CAMBIO: Posición del botón B-A-S-A-D-A en el fondo ===
+        rect.center = (self.w//2, self.h - self.PAD_BOTTOM - (rect.height // 2))
+        
         self.btn_confirmar = Button(rect, "Confirmar", self.font_btn, base_surf=btn_base, hover_surf=btn_hover)
 
-        # Área del preview (donde va el personaje) — la hice un poco más grande
-        preview_w = int(self.w * 0.22)   # antes 0.18
-        preview_h = int(self.h * 0.42)   # antes 0.36
-        self.preview_rect = pygame.Rect(0, 0, preview_w, preview_h)
-        self.preview_rect.center = (self.w//2, int(self.h*0.50))
+        # 5. Cargar Imagen del Marco (¡NUEVO!)
+        # === CAMBIO: Cargar dos imágenes separadas ===
+        self.marco_h_img = load_image(self.assets_dir, ["marco_personaje_h"])
+        self.marco_m_img = load_image(self.assets_dir, ["marco_personaje_m"])
+        
+        # === CAMBIO: Marcos más chicos (40% de la altura) ===
+        box_h = int(self.h * 0.40) # Altura deseada para los marcos (Era 0.42)
 
-        # Zonas de clic para cambiar (invisibles)
-        sep = int(self.w*0.08)
-        self.left_rect  = pygame.Rect(self.preview_rect.left - sep,  self.preview_rect.top, sep, self.preview_rect.height)
-        self.right_rect = pygame.Rect(self.preview_rect.right,       self.preview_rect.top, sep, self.preview_rect.height)
+        # Si no se encuentra el marco H, crear placeholder
+        if not self.marco_h_img:
+            print("WARN: No se encontró 'marco_personaje_h.png', usando placeholder.")
+            self.marco_h_img = pygame.Surface((int(box_h * 0.75), box_h), pygame.SRCALPHA)
+            self.marco_h_img.fill((87, 58, 44, 150)) # Placeholder
+        else:
+            # Escalar el marco H
+            self.marco_h_img = scale_to_height(self.marco_h_img, box_h)
 
-        # Cargar candidatos
-        self.candidatos = self._load_personajes()
-        self.idx = 0 if self.candidatos else -1
+        # Si no se encuentra el marco M, crear placeholder
+        if not self.marco_m_img:
+            print("WARN: No se encontró 'marco_personaje_m.png', usando placeholder.")
+            self.marco_m_img = pygame.Surface((int(box_h * 0.75), box_h), pygame.SRCALPHA)
+            self.marco_m_img.fill((87, 58, 44, 150)) # Placeholder
+        else:
+            # Escalar el marco M
+            self.marco_m_img = scale_to_height(self.marco_m_img, box_h)
+            
+        # 6. Cajas de Personajes (Nuevo Layout)
+        # El área de la caja ahora se recalcula con el botón más arriba
+        box_area_top = self.title_rect.bottom + int(self.h * 0.03)
+        box_area_bottom = self.btn_confirmar.rect.top - int(self.h * 0.03)
+        box_area_h = box_area_bottom - box_area_top
+        
+        # Usar el tamaño de los marcos cargados
+        box_w_h = self.marco_h_img.get_width()
+        box_w_m = self.marco_m_img.get_width()
+        # box_h ya está definido
+        
+        gap = int(self.w * 0.1) # Espacio entre cajas
+        total_boxes_w = box_w_h + box_w_m + gap
+        
+        start_x = (self.w - total_boxes_w) // 2
+        box_y = box_area_top + (box_area_h - box_h) // 2 # Centrado vertical
 
-    # --- carga personajes ---
-    def _load_personajes(self):
-        items = []
-        for p in _find_person_images(self.assets_dir):
-            try:
-                img = pygame.image.load(str(p))
-                img = img.convert_alpha() if p.suffix.lower()==".png" else img.convert()
-                name = _pretty_name(p)
-                items.append({"path": p, "img": img, "name": name})
-            except Exception:
-                pass
-        # Si no hay, crea un placeholder
-        if not items:
-            ph = pygame.Surface((64, 96), pygame.SRCALPHA)
-            ph.fill((0,0,0,0)); pygame.draw.rect(ph, (240,200,0), ph.get_rect()); pygame.draw.rect(ph, (0,0,0), ph.get_rect(), 3)
-            items.append({"path": Path("placeholder"), "img": ph, "name": "EcoGuardian"})
-        return items
+        self.box_h_rect = pygame.Rect(start_x, box_y, box_w_h, box_h)
+        self.box_m_rect = pygame.Rect(start_x + box_w_h + gap, box_y, box_w_m, box_h)
+        
 
-    # --- fondo scroll ---
+        # 7. Cargar Previews de Personajes
+        # === CAMBIO: Reducir el tamaño del "espejo" para que quepa el personaje ===
+        preview_max_w_h = int(self.box_h_rect.width * 0.35)  # Era 0.40
+        preview_max_h_h = int(self.box_h_rect.height * 0.50) # Era 0.45
+        preview_max_w_m = int(self.box_m_rect.width * 0.35)  # Era 0.40
+        preview_max_h_m = int(self.box_m_rect.height * 0.50) # Era 0.45
+        
+        self.preview_h = _load_character_preview(assets_dir, "PERSONAJE H", preview_max_w_h, preview_max_h_h)
+        self.preview_m = _load_character_preview(assets_dir, "PERSONAJE M", preview_max_w_m, preview_max_h_m)
+
+        # 8. Estado
+        self.selected_char: Optional[str] = None # Almacena "PERSONAJE H" o "PERSONAJE M"
+        
+        # === CAMBIO: Añadir botón de Regresar (btn_back) ===
+        self.back_img = load_image(assets_dir, ["btn_back", "regresar", "btn_regresar", "back"])
+        self.back_img_hover = None
+        self.back_rect = pygame.Rect(0,0,1,1) # Dummy rect
+        if self.back_img:
+            desired_w = max(120, min(int(self.w * 0.12), 240))
+            self.back_img = scale_to_width(self.back_img, desired_w)
+            self.back_img_hover = scale_to_width(self.back_img, int(self.back_img.get_width() * 1.08))
+            # === CAMBIO: Posición clásica en la esquina ===
+            self.back_rect = self.back_img.get_rect(bottomleft=(10, self.h - 12))
+
+
     def _draw_scrolling_bg(self, dt: float):
+        """Dibuja el fondo de tu juego con scroll"""
         self.bg_scroll_x = (self.bg_scroll_x - self.bg_speed*dt) % self.bg_scaled.get_width()
         x = -self.bg_scroll_x
         while x < self.w:
             self.screen.blit(self.bg_scaled, (int(x), 0)); x += self.bg_scaled.get_width()
 
+
     def run(self) -> Optional[str]:
         """
-        Ahora devuelve la carpeta del personaje seleccionada:
+        Devuelve la carpeta del personaje seleccionada:
           -> "PERSONAJE H" ó "PERSONAJE M"
+          -> None si el usuario sale
         """
         while True:
             dt = self.clock.tick(60) / 1000.0
             events = pygame.event.get()
+            
+            # --- Eventos ---
+            mouse_pos = pygame.mouse.get_pos()
+            clicked_back = False
+            
             for ev in events:
                 if ev.type == pygame.QUIT:
                     return None
                 if ev.type == pygame.KEYDOWN:
-                    if ev.key in (pygame.K_RETURN, pygame.K_KP_ENTER):
-                        if self.idx >= 0:
-                            play_sfx("select", self.assets_dir)
-                            cand = self.candidatos[self.idx]
-                            carpeta = _infer_personaje_folder_from_candidate(cand.get("path"), cand.get("name"))
-                            return carpeta
                     if ev.key == pygame.K_ESCAPE:
                         play_sfx("back", self.assets_dir)
                         return None
-                    if ev.key == pygame.K_LEFT and self.candidatos:
-                        self.idx = (self.idx - 1) % len(self.candidatos)
-                        play_sfx("select", self.assets_dir)
-                    if ev.key == pygame.K_RIGHT and self.candidatos:
-                        self.idx = (self.idx + 1) % len(self.candidatos)
-                        play_sfx("select", self.assets_dir)
-
-            # clicks
-            if self.btn_confirmar.update(events):
-                if self.idx >= 0:
-                    play_sfx("select", self.assets_dir)
-                    cand = self.candidatos[self.idx]
-                    carpeta = _infer_personaje_folder_from_candidate(cand.get("path"), cand.get("name"))
-                    return carpeta
-
-            for ev in events:
+                
                 if ev.type == pygame.MOUSEBUTTONDOWN and ev.button == 1:
-                    mouse = pygame.mouse.get_pos()
-                    if self.left_rect.collidepoint(mouse) and self.candidatos:
-                        self.idx = (self.idx - 1) % len(self.candidatos)
+                    # Hacemos clic en toda la caja del marco
+                    if self.box_h_rect.collidepoint(mouse_pos):
+                        self.selected_char = "PERSONAJE H"
                         play_sfx("select", self.assets_dir)
-                    elif self.right_rect.collidepoint(mouse) and self.candidatos:
-                        self.idx = (self.idx + 1) % len(self.candidatos)
+                    elif self.box_m_rect.collidepoint(mouse_pos):
+                        self.selected_char = "PERSONAJE M"
                         play_sfx("select", self.assets_dir)
+                    
+                    # === CAMBIO: Comprobar clic en el botón Back ===
+                    # Usamos 'current_back_rect' para la colisión
+                    if self.back_rect.collidepoint(mouse_pos):
+                         clicked_back = True
 
-            # DIBUJO
+            # --- Botón Confirmar ---
+            if self.btn_confirmar.update(events):
+                if self.selected_char: # Solo funciona si se ha seleccionado uno
+                    play_sfx("select", self.assets_dir)
+                    # Devuelve la carpeta, no el nombre bonito
+                    return self.selected_char 
+                else:
+                    play_sfx("back", self.assets_dir) # Sonido de "error" si no se ha elegido
+
+            # === CAMBIO: Lógica del botón Back ===
+            if clicked_back:
+                play_sfx("back", self.assets_dir)
+                return None
+            
+            # --- Dibujo ---
             self._draw_scrolling_bg(dt)
 
             # Título
             if self.title_img:
-                self.screen.blit(self.title_img, self.title_img.get_rect(center=(self.w//2, self.PAD_TOP + self.title_img.get_height()//2)))
+                self.screen.blit(self.title_img, self.title_rect)
             else:
-                title_y = self.PAD_TOP + 20
                 title = self.font_title.render("Elige tu personaje", True, (20,15,10))
-                self.screen.blit(title, title.get_rect(center=(self.w//2, title_y)))
+                self.screen.blit(title, title.get_rect(center=(self.w//2, self.PAD_TOP + 20)))
 
-            # Recuadro/placa detrás del sprite
-            pygame.draw.rect(self.screen, (35,25,20), self.preview_rect, 6, border_radius=8)
-            inner = self.preview_rect.inflate(-10, -10)
-            pygame.draw.rect(self.screen, (250, 230, 120), inner, 0, border_radius=6)  # similar a tu “amarillo panel”
+            # --- Cajas de Personajes (NUEVA LÓGICA DE DIBUJO) ---
+            
+            # 1. Dibujar los marcos SEPARADOS
+            self.screen.blit(self.marco_h_img, self.box_h_rect)
+            self.screen.blit(self.marco_m_img, self.box_m_rect)
 
-            # Imagen (AGRANDADA) — sin texto debajo
-            if self.idx >= 0:
-                item = self.candidatos[self.idx]
-                iw, ih = item["img"].get_size()
+            # 2. Dibujar los previews de personajes (centrados dentro de CADA marco)
+            # === CAMBIO: Centrar el personaje en el espejo ===
+            center_h = (self.box_h_rect.centerx, self.box_h_rect.centery - int(self.h * 0.02))
+            center_m = (self.box_m_rect.centerx, self.box_m_rect.centery - int(self.h * 0.02))
+            
+            img_rect_h = self.preview_h.get_rect(center=center_h)
+            img_rect_m = self.preview_m.get_rect(center=center_m)
+            self.screen.blit(self.preview_h, img_rect_h)
+            self.screen.blit(self.preview_m, img_rect_m)
 
-                # Queremos agrandar hasta 1.35x pero sin salirnos del rectángulo
-                max_scale = 1.35
-                # Escala máxima que cabe en el recuadro (con margen de 8px)
-                fit_scale_w = (inner.w - 8) / iw
-                fit_scale_h = (inner.h - 8) / ih
-                r = min(max_scale, fit_scale_w, fit_scale_h)
-                if r < 1.0:
-                    # Si aún no cabe a 1.0, reduce para entrar
-                    r = min(fit_scale_w, fit_scale_h)
-                new_size = (int(iw * r), int(ih * r))
-                img_big = pygame.transform.smoothscale(item["img"], new_size)
+            # 3. Dibujar etiquetas de nombre (debajo de los marcos)
+            # === CAMBIO: ELIMINADO EL BLOQUE DE TEXTO ===
 
-                self.screen.blit(img_big, img_big.get_rect(center=inner.center))
+
+            # 4. Dibujar Resalte (Highlight)
+            COLOR_HIGHLIGHT = (255, 255, 255, 180) # Blanco semitransparente
+            if self.selected_char == "PERSONAJE H":
+                # Dibuja un rectángulo simple de selección alrededor del marco izquierdo
+                pygame.draw.rect(self.screen, COLOR_HIGHLIGHT, self.box_h_rect.inflate(6,6), 5, 10)
+            elif self.selected_char == "PERSONAJE M":
+                # Dibuja un rectángulo simple de selección alrededor del marco derecho
+                pygame.draw.rect(self.screen, COLOR_HIGHLIGHT, self.box_m_rect.inflate(6,6), 5, 10)
 
             # Botón confirmar
             self.btn_confirmar.draw(self.screen)
+            
+            # === CAMBIO: Dibujar botón Back (lógica corregida) ===
+            if self.back_img and self.back_img_hover:
+                if self.back_rect.collidepoint(mouse_pos):
+                    # Dibuja el hover centrado en la posición base
+                    r = self.back_img_hover.get_rect(center=self.back_rect.center)
+                    self.screen.blit(self.back_img_hover, r)
+                else:
+                    self.screen.blit(self.back_img, self.back_rect)
+
 
             pygame.display.flip()

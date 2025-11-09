@@ -62,9 +62,9 @@ SAFE_SPAWN_AREAS = [
     # Calle (acortada para evitar árbol inferior y bicicleta)
     pygame.Rect(80, 540, 1000, 140), 
 ]
-SEEDS_TO_SPAWN = 5
-# === CAMBIO: Nueva constante para hoyos ===
-HOLES_TO_SPAWN = 5
+# === CAMBIO: 8 semillas en lugar de 5 ===
+HOLES_TO_SPAWN = 8 # Nueva constante
+SEEDS_TO_SPAWN = 8
 TOTAL_HOLES = HOLES_TO_SPAWN # Ahora usa la nueva constante
 GROW_STEPS = 3
 GROW_TIME_PER_STEP = 220  # ms
@@ -74,7 +74,7 @@ GROW_TIME_PER_STEP = 220  # ms
 def load_char_frames(assets_dir: Path, target_h: int, *, char_folder: str = "PERSONAJE H") -> dict[str, list[pygame.Surface] | pygame.Surface]:
     char_dir = assets_dir / char_folder
     if not char_dir.exists():
-        # === CAMBIO: Fallback para personaje ===
+        # Fallback a H si M no existe, o viceversa
         alt_folder = "PERSONAJE H" if "M" in char_folder else "PERSONAJE M"
         if (assets_dir / alt_folder).exists():
             print(f"WARN: Carpeta '{char_folder}' no encontrada. Usando '{alt_folder}'.")
@@ -296,7 +296,8 @@ def non_overlapping_spawn(rects_to_avoid: List[pygame.Rect], areas: List[pygame.
 # === ¡AQUÍ COMIENZA LA NUEVA FUNCIÓN 'RUN' QUE LO CONTIENE TODO! ===
 # ==================================================================
 
-def run(screen: pygame.Surface, assets_dir: Path, personaje: str = "EcoGuardian", dificultad: str = "Fácil"):
+# === CAMBIO: 'personaje' y 'dificultad' ahora son argumentos ===
+def run(screen: pygame.Surface, assets_dir: Path, personaje: str = "EcoGuardian", dificultad: str = "Difícil"):
     
     # --- 1. Inicialización (lógica del __init__) ---
     pygame.font.init()
@@ -333,11 +334,13 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str = "EcoGuardian"
     target_h = max(40, int(H * 0.14)) # Usamos el tamaño 0.14
     # === CAMBIO: Usar la variable 'personaje' que viene del menú ===
     frames = load_char_frames(assets_dir, target_h=target_h, char_folder=personaje)
-    player = Player(frames, (120, 490), screen.get_rect(), speed=320, anim_fps=8.0)
+    # === CAMBIO: Mayor velocidad y anim_fps para modo difícil ===
+    player = Player(frames, (120, 490), screen.get_rect(), speed=340, anim_fps=9.0)
 
     # === CAMBIO: Generar Hoyos y Semillas Aleatoriamente ===
     
     # 1. Generar posiciones aleatorias para los HOYOS primero
+    # (Usamos una lista vacía de 'avoid' para los hoyos)
     hole_pts = non_overlapping_spawn([], SAFE_SPAWN_AREAS, HOLES_TO_SPAWN)
     holes: List[Hole] = [Hole(p, img_hoyo) for p in hole_pts]
 
@@ -355,7 +358,8 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str = "EcoGuardian"
     total_hoyos = len(holes)
 
     # Variables de Timer y Pausa
-    TOTAL_MS = 80_000
+    # === CAMBIO: Menos tiempo (70 seg en lugar de 80) ===
+    TOTAL_MS = 70_000
     remaining_ms = TOTAL_MS
     game_over = False
     game_over_timer_ms = 1200 # 1.2 segundos para mostrar "Game Over"
@@ -363,7 +367,7 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str = "EcoGuardian"
     
     # === CAMBIO: Iniciar música de nivel ===
     start_level_music(assets_dir)
-    
+
     # Assets del Menú de Pausa
     pause_assets_dir = assets_dir / "PAUSA"
     pausa_panel_img = load_image(pause_assets_dir, ["nivelA 2", "panel_pausa", "pausa_panel"])
@@ -542,7 +546,8 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str = "EcoGuardian"
             
             # HUD (Contador y Controles)
             hud = [
-                "Nivel 2 – La Calle (Fácil, con tiempo)",
+                # === CAMBIO: Texto de HUD a "Difícil" ===
+                "Nivel 2 – La Calle (Difícil)",
                 "Mover: WASD/Flechas | Recoger/Plantar: E / Enter | Pausa: Espacio",
                 f"Plantadas: {total_semillas_plantadas} / {total_hoyos}",
             ]

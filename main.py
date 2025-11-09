@@ -125,12 +125,11 @@ def _load_level_module(nivel: int, dificultad: str):
         if dificultad == "facil":
             import levels.nivel2_facil as mod; return mod
         else:
-            # si tienes nivel2_dificil en el futuro, cámbialo aquí; por ahora reutilizamos facil como fallback
-            import levels.nivel2_facil as mod; return mod
+            # === CAMBIO: Ahora cargamos el nuevo archivo difícil ===
+            import levels.nivel2_dificil as mod; return mod
     elif nivel == 3:
         # adapta si tienes nivel3 modules
         import levels.nivel3_facil as mod; return mod
-    raise RuntimeError("Nivel no soportado: " + str(nivel))
 
 # ===== LOOP =====
 running = True

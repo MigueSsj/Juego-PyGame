@@ -1,4 +1,3 @@
-# dificultad.py
 from __future__ import annotations
 import pygame
 from pathlib import Path
@@ -64,9 +63,9 @@ def _resolve_personaje_folder(label: str) -> Optional[str]:
     """
     Convierte un label devuelto por la pantalla de selección en la carpeta real:
     e.g. "EcoGuardian (M)" -> "PERSONAJE M"
-          "EcoGuardian" -> "PERSONAJE H"  (por convención si no indica M/H)
-          "H" -> "PERSONAJE H"
-          "M" -> "PERSONAJE M"
+         "EcoGuardian" -> "PERSONAJE H"  (por convención si no indica M/H)
+         "H" -> "PERSONAJE H"
+         "M" -> "PERSONAJE M"
     Devuelve None si no se pudo resolver.
     """
     if not isinstance(label, str):
@@ -129,16 +128,56 @@ def run(screen: pygame.Surface, assets_dir: Path, nivel: int = 1, *args, **kwarg
     bw = background.get_width()
     scroll_x = 0; SCROLL_SPEED = 2
 
-    title_img = load_image(assets_dir, [f"elige_dificultad_nivel{nivel}", "elige_dificultad", "title_dificultad"])
+    # ===================================================================
+    # === CAMBIO: Cargar el TÍTULO específico del nivel ===
+    # ===================================================================
+    title_img = None
+    if nivel == 2:
+        # Nombres que me sugeriste + nombre de archivo que subiste
+        title_img = load_image(assets_dir, ["title_dificultad_2", "WhatsApp_Image_2025-11-08_at_7.58.00_PM-removebg-preview"])
+    elif nivel == 3:
+        # Nombres que me sugeriste + nombre de archivo que subiste
+        title_img = load_image(assets_dir, ["title_dificultad_3", "WhatsApp_Image_2025-11-08_at_7.58.45_PM-removebg-preview"])
+
+    # Si no es 2 o 3, or si falló la carga, usa el método anterior
+    if title_img is None:
+        title_img = load_image(assets_dir, [f"elige_dificultad_nivel{nivel}", "elige_dificultad", "title_dificultad"])
+    # ===================================================================
+    
     if title_img:
-        title_img = scale_to_width(title_img, int(W * 0.38))
+        # === CAMBIO: Título más chico (era 0.38) ===
+        title_img = scale_to_width(title_img, int(W * 0.30))
     else:
+        # Fallback final a texto si todo lo demás falla
         font_title = pygame.font.SysFont("arial", 48, bold=True)
         title_img = font_title.render(f"Elige dificultad - Nivel {nivel}", True, (255, 255, 255))
-    title_rect = title_img.get_rect(center=(W // 2, int(H * 0.18)))
+    
+    # === CAMBIO: Título más abajo (era 0.18) ===
+    title_rect = title_img.get_rect(center=(W // 2, int(H * 0.22)))
 
-    btn_normal_img  = load_image(assets_dir, ["btn_normal", "normal", "btn_facil", "facil"])
-    btn_dificil_img = load_image(assets_dir, ["btn_dificil", "dificil"])
+    # ===================================================================
+    # === CAMBIO: Cargar imágenes de dificultad según el nivel ===
+    # (Este código ya lo tenías y está perfecto)
+    # ===================================================================
+    if nivel == 2:
+        # Nivel 2 usa las nuevas imágenes
+        print("DEBUG: Cargando imágenes de dificultad para Nivel 2")
+        btn_normal_img  = load_image(assets_dir, ["btn_facil2", "IMAGEN DE PRINCIPIANTE NIVEL 2 EN ESPAÑOL"])
+        btn_dificil_img = load_image(assets_dir, ["btn_dificil2", "IMAGEN DE AVANZADO NIVEL 2 EN ESPAÑOL"])
+    
+    elif nivel == 3:
+        # Nivel 3 usa sus propias imágenes
+        print("DEBUG: Cargando imágenes de dificultad para Nivel 3")
+        btn_normal_img  = load_image(assets_dir, ["btn_facil3"])
+        btn_dificil_img = load_image(assets_dir, ["btn_dificil3", "IMAGEN DE AVANZADO NIVEL 2 EN ESPAÑOL"]) # Re-usa la difícil del Nivel 2
+    
+    else:
+        # Nivel 1 (y cualquier otro no definido) usa las imágenes por defecto
+        print("DEBUG: Cargando imágenes de dificultad para Nivel 1 (default)")
+        btn_normal_img  = load_image(assets_dir, ["btn_normal", "normal", "btn_facil", "facil"])
+        btn_dificil_img = load_image(assets_dir, ["btn_dificil", "dificil"])
+    # ===================================================================
+
     target_w = int(W * 0.26); gap = int(W * 0.06); HOVER_SCALE = 1.08
 
     def prepare_button(img: pygame.Surface | None, txt: str):

@@ -1,4 +1,3 @@
-# audio_shared.py
 from __future__ import annotations
 import pygame, os
 from pathlib import Path
@@ -45,46 +44,52 @@ def _ensure_mixer():
 
 # ---------- Música de menú ----------
 _menu_loaded_src: str | None = None
+_menu_music_path: Path | None = None # Cache para el path de la música de menú
 
 def start_menu_music(assets_dir: Path) -> None:
     """Inicia música de menú en loop respetando volumen maestro."""
+    global _menu_loaded_src, _menu_music_path
     try:
         _ensure_mixer()
         vol = load_master_volume(assets_dir)
         pygame.mixer.music.set_volume(vol)
 
-        # =====================================================================
-        # === ¡¡AQUÍ ESTÁ LA CORRECCIÓN!! ===
-        # Añadí "musica inicio" (con espacio) a la lista.
-        # =====================================================================
-        cand = _find_audio(assets_dir, [
-            "musica inicio", # <--- ¡AÑADIDO!
-            "musica_menu", "menu_music", "bg_menu", "fondo_menu", "musica_inicio"
-        ])
+        # Carga el path de la música de menú si aún no se ha cargado
+        if _menu_music_path is None:
+            cand = _find_audio(assets_dir, [
+                "musica inicio", # <--- ¡AÑADIDO!
+                "musica_menu", "menu_music", "bg_menu", "fondo_menu", "musica_inicio"
+            ])
+            if cand is None:
+                print(f"ADVERTENCIA: No se encontró el archivo de música de menú (ej. 'musica inicio.mp3') en {assets_dir / 'msuiquita'}")
+                return
+            _menu_music_path = cand
         
-        if cand is None:
-            # Si sigue sin encontrarla, imprime un aviso
-            print(f"ADVERTENCIA: No se encontró el archivo de música de menú (ej. 'musica inicio.mp3') en {assets_dir / 'msuiquita'}")
-            return
-            
-        global _menu_loaded_src
-        if _menu_loaded_src != str(cand):
-            pygame.mixer.music.load(str(cand))
-            _menu_loaded_src = str(cand)
-        if not pygame.mixer.music.get_busy():
-            pygame.mixer.music.play(-1)
+        # === CAMBIO: Lógica de reproducción forzada ===
+        # Si la música cargada no es la de menú, cárgala y reprodúcela
+        if _menu_loaded_src != str(_menu_music_path):
+            pygame.mixer.music.load(str(_menu_music_path))
+            _menu_loaded_src = str(_menu_music_path)
+            pygame.mixer.music.play(-1, fade_ms=300) # Forzar reproducción
+        
+        # Si es la música correcta pero no está sonando, reprodúcela
+        elif not pygame.mixer.music.get_busy():
+            pygame.mixer.music.play(-1, fade_ms=300)
+
+        # Limpia los 'trackers' de música de nivel
+        global _level_music_loaded_src, _suspense_music_loaded_src
+        _level_music_loaded_src = None
+        _suspense_music_loaded_src = None
     except Exception:
         pass
 
+
 def ensure_menu_music_running(assets_dir: Path) -> None:
-    """Si la música no suena, volver a iniciarla."""
-    try:
-        if not pygame.mixer.get_init():
-            start_menu_music(assets_dir); return
-        if not pygame.mixer.music.get_busy():
-            start_menu_music(assets_dir)
-    except Exception:
-        pass
+    """Asegura que la música de menú esté sonando (llamado al volver de un nivel)."""
+    # === CAMBIO: Esta función ahora llama a start_menu_music ===
+    # start_menu_music es lo suficientemente inteligente como para saber si debe
+    # forzar la carga (si viene de un nivel) o simplemente reanudar.
+    start_menu_music(assets_dir)
 
 def set_music_volume_now(assets_dir: Path, v: float) -> None:
     """Ajusta en caliente el volumen de la música y lo mantiene en la sesión."""
@@ -94,6 +99,89 @@ def set_music_volume_now(assets_dir: Path, v: float) -> None:
         pygame.mixer.music.set_volume(v)
     except Exception:
         pass
+
+# ================================================================
+# === FUNCIONES DE MÚSICA PARA NIVELES (SIN CAMBIOS) ===
+# (Buscando 'frantic_gameplay_v001' y 'a2')
+# ================================================================
+
+_level_music_loaded_src: str | None = None
+_suspense_music_loaded_src: str | None = None
+
+def start_level_music(assets_dir: Path) -> None:
+    """Carga y reproduce la música de gameplay 'frantic'."""
+    try:
+        _ensure_mixer()
+        vol = load_master_volume(assets_dir)
+        pygame.mixer.music.set_volume(vol)
+        
+        global _level_music_loaded_src
+        # Busca 'frantic_gameplay_v001.ogg' o similares
+        cand = _find_audio(assets_dir, ["frantic_gameplay_v001", "frantic", "level_music"])
+        if cand is None:
+            print(f"ADVERTENCIA: No se encontró 'frantic_gameplay_v001.ogg' en {assets_dir / 'msuiquita'}")
+            return
+        
+        # Solo carga si es una canción diferente a la actual
+        global _menu_loaded_src
+        if _level_music_loaded_src != str(cand):
+            pygame.mixer.music.load(str(cand))
+            _level_music_loaded_src = str(cand)
+            _menu_loaded_src = str(cand) # Marcar como cargada
+        
+        # Resetea la música de suspenso
+        global _suspense_music_loaded_src
+        _suspense_music_loaded_src = None 
+        
+        pygame.mixer.music.play(-1, fade_ms=500)
+    except Exception as e:
+        print(f"Error al iniciar música de nivel: {e}")
+
+def start_suspense_music(assets_dir: Path) -> None:
+    """Carga y reproduce la música de suspenso 'a2'."""
+    try:
+        _ensure_mixer()
+        vol = load_master_volume(assets_dir)
+        pygame.mixer.music.set_volume(vol)
+        
+        global _suspense_music_loaded_src
+        # Busca 'a2.mp3' o similares
+        cand = _find_audio(assets_dir, ["a2", "suspense", "timer_low"])
+        if cand is None:
+            print(f"ADVERTENCIA: No se encontró 'a2.mp3' en {assets_dir / 'msuiquita'}")
+            return
+        
+        # Solo carga si es una canción diferente
+        global _menu_loaded_src
+        if _suspense_music_loaded_src != str(cand):
+            pygame.mixer.music.load(str(cand))
+            _suspense_music_loaded_src = str(cand)
+            _menu_loaded_src = str(cand) # Marcar como cargada
+        
+        # Resetea la música de nivel
+        global _level_music_loaded_src
+        _level_music_loaded_src = None 
+
+        pygame.mixer.music.play(-1, fade_ms=500)
+    except Exception as e:
+        print(f"Error al iniciar música de suspenso: {e}")
+
+def stop_level_music() -> None:
+    """Detiene la música del nivel (usado al salir al menú)."""
+    try:
+        if pygame.mixer.get_init():
+            # Mantenemos el fadeout, la nueva lógica de start_menu_music lo anulará
+            pygame.mixer.music.fadeout(500)
+        global _level_music_loaded_src, _suspense_music_loaded_src
+        _level_music_loaded_src = None
+        _suspense_music_loaded_src = None
+    except Exception:
+        pass
+
+# ================================================================
+# === FIN DE LAS FUNCIONES AÑADIDAS ===
+# ================================================================
+
 
 # ---------- Banco SFX ----------
 _sfx_cache: dict[str, pygame.mixer.Sound] = {}
