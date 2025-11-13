@@ -3,6 +3,7 @@ import pygame
 import sys
 import re
 import math
+import random # (Importar random no es necesario aquí, pero no estorba)
 from pathlib import Path
 from typing import Optional, List, Tuple, Dict
 
@@ -24,7 +25,6 @@ GRIS = (100, 100, 100); ROJO_OSCURO = (100, 0, 0)
 TIEMPO_PARA_REPARAR = 120  # 2 segundos
 TOTAL_MS = 80_000          # 80 segundos
 SUSPENSE_TIME_MS = 30_000  # 30 segundos
-
 
 # ===============================================================
 # === SECCIÓN DE AYUDA (Helpers) (Copiada de Nivel 2) ===
@@ -143,7 +143,7 @@ class Player(pygame.sprite.Sprite):
         surface.blit(self.image, self.rect)
 
 # ===============================================================
-# === FUNCIÓN PRINCIPAL DEL NIVEL 3 ===
+# === FUNCIÓN PRINCIPAL DEL NIVEL 3 (MODO FÁCIL) ===
 # ===============================================================
 
 def run(screen: pygame.Surface, assets_dir: Path, personaje: str, dificultad: str):
@@ -158,7 +158,7 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str, dificultad: st
 
     # --- 1. Cargar Recursos del Nivel ---
     try:
-        # (Tu sección de carga de 16 imágenes. Asumo que está completa y correcta)
+        # (Tu sección de carga de 16 imágenes)
         img_0_roto = pygame.image.load(assets_dir / 'original.jpg').convert()
         img_1_top_izq = pygame.image.load(assets_dir / 'img_1_top_izq.jpg').convert()
         img_1_top_medio = pygame.image.load(assets_dir / 'img_1_top_medio.png').convert()
@@ -209,15 +209,14 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str, dificultad: st
         print("Asegúrate de tener TODAS las 16 imágenes de estado en la carpeta 'assets/'.")
         return "menu" 
 
-    # --- 2. Definir Zonas de Reparación (¡¡¡CORREGIDAS Y PEQUEÑAS!!!) ---
-    # Zonas pequeñas de 40x40 para ser precisos
-    zona_reparar_top_izq = pygame.Rect(190, 200, 40, 40)
-    zona_reparar_top_medio = pygame.Rect(440, 200, 40, 40)
-    zona_reparar_abajo_izq = pygame.Rect(190, 500, 40, 40)
-    zona_reparar_abajo_der = pygame.Rect(710, 500, 40, 40) # Movida más a la derecha, lejos de la fuente
+    # --- 2. Definir Zonas de Reparación (¡¡¡ZONAS GRANDES!!!) ---
+    zona_reparar_top_izq = pygame.Rect(0, 0, ANCHO // 3, ALTO // 2 - 50)
+    zona_reparar_top_medio = pygame.Rect(ANCHO // 3, 0, ANCHO // 3, ALTO // 2 - 50)
+    zona_reparar_abajo_izq = pygame.Rect(0, ALTO // 2 + 50, ANCHO // 3, ALTO // 2 - 50)
+    zona_reparar_abajo_der = pygame.Rect(ANCHO * 2 // 3, ALTO // 2 + 50, ANCHO // 3, ALTO // 2 - 50)
 
     # --- 2.1. Definir Límites de los Edificios (¡¡¡VACÍA!!!) ---
-    limites_edificios = []
+    limites_edificios = [] # ¡Colisiones desactivadas! (Para movimiento libre)
     
     # --- 3. Instanciar Jugador ---
     try:
@@ -317,11 +316,18 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str, dificultad: st
             elif not estado_reparacion["abajo_izq"] and jugador.rect.colliderect(zona_reparar_abajo_izq): zona_activa = "abajo_izq"
             elif not estado_reparacion["abajo_der"] and jugador.rect.colliderect(zona_reparar_abajo_der): zona_activa = "abajo_der"
             
+            # --- ¡LÓGICA DE REPARACIÓN FÁCIL! (Sin herramienta) ---
             if zona_activa and teclas[pygame.K_r]:
                 reparando_actualmente = zona_activa; progreso_reparacion += 1
                 if progreso_reparacion >= TIEMPO_PARA_REPARAR:
                     estado_reparacion[zona_activa] = True
                     progreso_reparacion = 0; reparando_actualmente = None
+                    play_sfx("sfx_plant", assets_dir) # Reusamos sonido
+                    
+                    if all(estado_reparacion.values()):
+                        victoria = True
+                        stop_level_music()
+                        tiempo_fin_juego = 0
             else:
                 progreso_reparacion = 0; reparando_actualmente = None
 
@@ -347,7 +353,7 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str, dificultad: st
         elif ti and tm and ai and ad:
             screen.blit(imagenes_escaladas[15], (0, 0))
             if not victoria:
-                victoria = True; stop_level_music(); tiempo_fin_juego = 0
+                pass # (La victoria se activa al reparar)
         
         jugador.draw(screen)
 
@@ -358,9 +364,11 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str, dificultad: st
             ancho_progreso = 50 * (progreso_reparacion / TIEMPO_PARA_REPARAR)
             pygame.draw.rect(screen, VERDE, (pos_barra_x, pos_barra_y, ancho_progreso, 10), border_radius=2)
             
-        texto_hud = font_hud.render("Reparar: [R] | Pausa: [ESPACIO]", True, NEGRO)
+        # --- ¡HUD FÁCIL! (Sin herramienta) ---
+        texto_hud_str = "Reparar: [R] | Pausa: [ESPACIO]"
+        texto_hud = font_hud.render(texto_hud_str, True, NEGRO)
         screen.blit(texto_hud, (15, ALTO - 35))
-        texto_hud_sombra = font_hud.render("Reparar: [R] | Pausa: [ESPACIO]", True, BLANCO)
+        texto_hud_sombra = font_hud.render(texto_hud_str, True, BLANCO)
         screen.blit(texto_hud_sombra, (13, ALTO - 37))
 
         # Temporizador Gráfico

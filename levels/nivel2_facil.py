@@ -329,6 +329,21 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str = "EcoGuardian"
     img_semilla = scale_to_width(img_semilla, 44)
     img_arbol = scale_to_width(img_arbol, 180)
 
+    # =====================================================================
+    # === AÑADIR ESTO: Cargar y escalar la imagen de derrota Nivel 2 ===
+    # =====================================================================
+    img_derrota = None
+    # Asegúrate de renombrar tu imagen a "derrota_nivel2.jpg" y ponerla en /assets/
+    p_derrota = find_by_stem(assets_dir, "derrota_nivel2") 
+    if p_derrota:
+        temp_img = pygame.image.load(str(p_derrota))
+        temp_img = temp_img.convert_alpha() if p_derrota.suffix.lower()==".png" else temp_img.convert()
+        # Escalarla al tamaño de la pantalla (W, H) para que se vea completa
+        img_derrota = pygame.transform.smoothscale(temp_img, (W, H))
+    else:
+        print("ADVERTENCIA: No se encontró la imagen 'derrota_nivel2.jpg' en assets/.")
+    # =====================================================================
+
     # Crear Jugador
     target_h = max(40, int(H * 0.14)) # Usamos el tamaño 0.14
     # === CAMBIO: Usar la variable 'personaje' que viene del menú ===
@@ -522,9 +537,12 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str = "EcoGuardian"
             else:
                 # El tiempo se acabó
                 if not victory:
+                    # === CAMBIO: Detener música de suspenso al perder ===
+                    if suspense_music_started:
+                        stop_level_music() 
                     game_over = True
-                    game_over_timer_ms = 1200 # Iniciar contador de salida
-        
+                    game_over_timer_ms = 2500 # Un poco más de tiempo para ver la imagen
+            
         if game_over and not paused: # Contar solo si no está en pausa
             game_over_timer_ms -= dt_ms
             if game_over_timer_ms <= 0:
@@ -576,13 +594,24 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str = "EcoGuardian"
         screen.blit(sh,  sh.get_rect(center=(cx + 2, cy + 2)))
         screen.blit(txt, txt.get_rect(center=(cx, cy)))
 
+        # =====================================================================
+        # === INICIO: CÓDIGO DE DERROTA MODIFICADO ===
+        # =====================================================================
         # Dibujar "Tiempo Agotado" (si aplica)
         if game_over:
-            overlay = pygame.Surface((W, H), pygame.SRCALPHA)
-            overlay.fill((0, 0, 0, 160))
-            screen.blit(overlay, (0, 0))
-            msg = big_font.render("¡Tiempo agotado!", True, (255, 255, 255))
-            screen.blit(msg, msg.get_rect(center=(W // 2, H // 2 - 10)))
+            if img_derrota:
+                # Si la imagen se cargó, la dibujamos
+                screen.blit(img_derrota, (0, 0))
+            else:
+                # Fallback: si no se encontró, usar el texto original
+                overlay = pygame.Surface((W, H), pygame.SRCALPHA)
+                overlay.fill((0, 0, 0, 160))
+                screen.blit(overlay, (0, 0))
+                msg = big_font.render("¡Tiempo agotado!", True, (255, 255, 255))
+                screen.blit(msg, msg.get_rect(center=(W // 2, H // 2 - 10)))
+        # =====================================================================
+        # === FIN: CÓDIGO DE DERROTA MODIFICADO ===
+        # =====================================================================
 
         # Dibujar Menú de Pausa (si aplica, se dibuja ENCIMA de todo)
         if paused:
@@ -653,7 +682,7 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str = "EcoGuardian"
                 stop_level_music()
                 running = False
 
-        # --- Actualizar pantalla ---
+        # --- ActuaAlizar pantalla ---
         pygame.display.flip()
             
     # --- 4. Salida ---

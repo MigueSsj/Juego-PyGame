@@ -382,6 +382,23 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str = "EcoGuardian"
     }
 
     # =====================================================================
+    # === AÑADIR ESTO: Cargar la imagen de derrota ===
+    # =====================================================================
+    img_derrota = None
+    # Intenta encontrar la imagen de derrota (asumimos que la llamaste 'derrota_nivel.jpg')
+    p_derrota = find_by_stem(assets_dir, "derrota_nivel") 
+    
+    if p_derrota:
+        # Cargar la imagen
+        temp_img = load_surface(p_derrota) 
+        # Escalarla al tamaño de la pantalla (W, H)
+        img_derrota = pygame.transform.smoothscale(temp_img, (W, H))
+    else:
+        print("ADVERTENCIA: No se encontró la imagen 'derrota_nivel.jpg' en assets/. Se usará el fondo negro.")
+    # =====================================================================
+
+
+    # =====================================================================
     # === CAMBIO 2: reset_level() ahora resetea 'remaining_ms' y música ===
     # =====================================================================
     def reset_level():
@@ -667,17 +684,51 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str = "EcoGuardian"
             stop_level_music()
             return {"estado": "completado", "recolectadas": total_trash}
 
+        # =====================================================================
+        # === INICIO: CÓDIGO DE DERROTA MODIFICADO ===
+        # =====================================================================
+        
         # Comprueba la derrota usando 'remaining_ms'
         if remaining_ms <= 0 and delivered < total_trash:
-            overlay = pygame.Surface((W, H), pygame.SRCALPHA)
-            overlay.fill((0, 0, 0, 160))
-            screen.blit(overlay, (0, 0))
-            msg = big.render("¡Tiempo agotado!", True, (255, 255, 255))
-            screen.blit(msg, msg.get_rect(center=(W // 2, H // 2 - 10)))
-            pygame.display.flip()
-            pygame.time.delay(1200)
-            # === CAMBIO: Detener música ===
-            stop_level_music()
-            return {"estado": "tiempo_agotado", "recolectadas": delivered}
+            
+            # === CAMBIO: Mostrar imagen de derrota en lugar de texto ===
+            
+            # Detener la música de fondo
+            stop_level_music() 
+            
+            if img_derrota:
+                # Si la imagen FUE cargada, la mostramos
+                screen.blit(img_derrota, (0, 0))
+                pygame.display.flip()
+                
+                # Esperar 2.5 segundos O hasta que el jugador haga clic/presione tecla
+                elapsed_derrota = 0.0
+                while elapsed_derrota < 2.5:
+                    dt_derrota = clock.tick(60) / 1000.0
+                    elapsed_derrota += dt_derrota
+                    for ev in pygame.event.get():
+                        if ev.type == pygame.QUIT:
+                            return {"estado": "tiempo_agotado", "recolectadas": delivered}
+                        if ev.type == pygame.KEYDOWN or (ev.type == pygame.MOUSEBUTTONDOWN and ev.button == 1):
+                            play_click(assets_dir) # Sonido de clic opcional
+                            return {"estado": "tiempo_agotado", "recolectadas": delivered}
+                
+                # Si se acaba el tiempo, simplemente salimos
+                return {"estado": "tiempo_agotado", "recolectadas": delivered}
+
+            else:
+                # --- Fallback: Si no se encontró img_derrota, usar el código original ---
+                overlay = pygame.Surface((W, H), pygame.SRCALPHA)
+                overlay.fill((0, 0, 0, 160))
+                screen.blit(overlay, (0, 0))
+                msg = big.render("¡Tiempo agotado!", True, (255, 255, 255))
+                screen.blit(msg, msg.get_rect(center=(W // 2, H // 2 - 10)))
+                pygame.display.flip()
+                pygame.time.delay(1200)
+                return {"estado": "tiempo_agotado", "recolectadas": delivered}
+        
+        # =====================================================================
+        # === FIN: CÓDIGO DE DERROTA MODIFICADO ===
+        # =====================================================================
 
         pygame.display.flip()

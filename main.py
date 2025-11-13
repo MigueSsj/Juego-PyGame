@@ -128,8 +128,17 @@ def _load_level_module(nivel: int, dificultad: str):
             # === CAMBIO: Ahora cargamos el nuevo archivo difícil ===
             import levels.nivel2_dificil as mod; return mod
     elif nivel == 3:
-        # adapta si tienes nivel3 modules
-        import levels.nivel3_facil as mod; return mod
+        if dificultad == "facil":
+            # Carga el nivel fácil
+            import levels.nivel3_facil as mod; return mod
+        else:
+            # ¡Este es el arreglo!
+            # Carga el nivel difícil si la dificultad NO es "facil"
+            import levels.nivel3_dificil as mod; return mod
+    
+    # Este 'else' es para niveles que no existen (ej. Nivel 4)
+    else:
+        raise ImportError(f"Nivel {nivel} no encontrado")
 
 # ===== LOOP =====
 running = True
