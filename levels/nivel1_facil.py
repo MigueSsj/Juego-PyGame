@@ -456,6 +456,20 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str = "EcoGuardian"
     # === CAMBIO: Variable de estado para música de suspenso ===
     suspense_music_started = False
 
+    # === Intento: buscar pantalla de LOSE para NIVEL 1P (usuario pidió esto) ===
+    pantalla_lose_img = None
+    try:
+        lose_folder = assets_dir / "PANTALLA LOSE"
+        # el usuario indicó "mayúsculas pero sin el _" y nombre "NIVEL 1P"
+        if lose_folder.exists():
+            for stem in ["NIVEL 1P", "NIVEL1P", "NIVEL1 P", "NIVEL1P".lower(), "nivel 1p", "NIVEL1P"]:
+                p = find_by_stem(lose_folder, stem)
+                if p:
+                    pantalla_lose_img = load_surface(p)
+                    break
+    except Exception:
+        pantalla_lose_img = None
+
     while True:
         dt = min(clock.tick(60) / 1000.0, 0.033)
         t += dt
@@ -765,7 +779,7 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str = "EcoGuardian"
 
 
         # =====================================================================
-        # === CAMBIO 6: Condición de derrota ahora usa 'remaining_ms' ===
+        # === CAMBIO 6: Condición de victoria ahora usa 'remaining_ms' ===
         # =====================================================================
         if not paused and delivered >= total_trash:
             win_img = None
@@ -809,15 +823,35 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str = "EcoGuardian"
 
         # Comprueba la derrota usando 'remaining_ms'
         if remaining_ms <= 0 and delivered < total_trash:
-            overlay = pygame.Surface((W, H), pygame.SRCALPHA)
-            overlay.fill((0, 0, 0, 160))
-            screen.blit(overlay, (0, 0))
-            msg = big.render("¡Tiempo agotado!", True, (255, 255, 255))
-            screen.blit(msg, msg.get_rect(center=(W // 2, H // 2 - 10)))
+            # --- NUEVO: mostrar la pantalla de "LOSE" del usuario si existe ---
+            stop_level_music()
+            if pantalla_lose_img:
+                try:
+                    # escalar a pantalla completa manteniendo la proporción (fit & cover)
+                    iw, ih = pantalla_lose_img.get_size()
+                    ratio = max(W / iw, H / ih)  # cover-like to fill screen (keeps aspect but may crop)
+                    new_w, new_h = int(iw * ratio), int(ih * ratio)
+                    scaled = pygame.transform.smoothscale(pantalla_lose_img, (new_w, new_h))
+                    rect = scaled.get_rect(center=(W//2, H//2))
+                    screen.blit(scaled, rect)
+                except Exception:
+                    # fallback a mensaje de texto si algo falla
+                    overlay = pygame.Surface((W, H), pygame.SRCALPHA)
+                    overlay.fill((0, 0, 0, 160))
+                    screen.blit(overlay, (0, 0))
+                    msg = big.render("¡Tiempo agotado!", True, (255, 255, 255))
+                    screen.blit(msg, msg.get_rect(center=(W // 2, H // 2 - 10)))
+            else:
+                # Si no existe la imagen, usar el texto clásico
+                overlay = pygame.Surface((W, H), pygame.SRCALPHA)
+                overlay.fill((0, 0, 0, 160))
+                screen.blit(overlay, (0, 0))
+                msg = big.render("¡Tiempo agotado!", True, (255, 255, 255))
+                screen.blit(msg, msg.get_rect(center=(W // 2, H // 2 - 10)))
+
             pygame.display.flip()
             pygame.time.delay(1200)
-            # === CAMBIO: Detener música ===
-            stop_level_music()
+            # === CAMBIO: Detener música (ya detenida arriba) ===
             return {"estado": "tiempo_agotado", "recolectadas": delivered}
 
         pygame.display.flip()

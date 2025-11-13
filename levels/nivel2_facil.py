@@ -337,6 +337,10 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str = "EcoGuardian"
     big_font = pygame.font.SysFont("arial", 54, bold=True)
     timer_font = pygame.font.SysFont("arial", 42, bold=True)
 
+    # --- NUEVAS FUENTES/ASSETS PARA ICONO Y MENSAJES ---
+    popup_font = pygame.font.SysFont("arial", 28, bold=True)
+    small_font = pygame.font.SysFont("arial", 20, bold=True)
+
     # Cargar imágenes
     try:
         # === LÓGICA DE CARGA MÁS SEGURA (copiada de Nivel 1) ===
@@ -404,6 +408,27 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str = "EcoGuardian"
         "menu_base": None, "menu_hover": None,
     }
     
+    # --- CARGAR ICONO "E" (fallback a dibujo si no existe) ---
+    icon_e_img = load_image(assets_dir, ["tecla_e", "icon_e", "key_e", "teclaE"])
+    icon_e_bg = None
+    if icon_e_img:
+        # escalar a tamaño razonable relativo a pantalla
+        icon_w = max(28, int(W * 0.035))
+        icon_e_img = pygame.transform.smoothscale(icon_e_img, (icon_w, icon_w))
+        # crear un bg para centrar si queremos (no obligatorio)
+        icon_e_bg = icon_e_img
+    else:
+        # Crear icono programático (fondo + letra)
+        letter = popup_font.render("E", True, (255,255,255))
+        icon_e_bg = pygame.Surface((letter.get_width()+16, letter.get_height()+12), pygame.SRCALPHA)
+        pygame.draw.rect(icon_e_bg, (0,0,0,180), icon_e_bg.get_rect(), border_radius=8)
+        icon_e_bg.blit(letter, letter.get_rect(center=icon_e_bg.get_rect().center))
+
+    # Variables para mensajes temporales (Semilla recogida / Árbol plantado)
+    show_message = ""
+    message_timer = 0.0
+    message_duration = 1.6  # segundos
+
     # --- 2. Funciones Anidadas (Helpers) ---
 
     def reset_level():
@@ -434,7 +459,7 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str = "EcoGuardian"
 
     def _try_interact():
         """Lógica para recoger o plantar semillas."""
-        nonlocal carrying_seed, total_semillas_plantadas
+        nonlocal carrying_seed, total_semillas_plantadas, show_message, message_timer
         if victory or game_over: return
         
         try:
@@ -453,6 +478,9 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str = "EcoGuardian"
                     carrying_seed = True
                     player.carrying_image = img_semilla
                     play_sfx("sfx_pick_seed", assets_dir)
+                    # mensaje
+                    show_message = "Semilla recogida"
+                    message_timer = message_duration
                     return
             
             # 2. Intentar plantar una semilla
@@ -470,6 +498,9 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str = "EcoGuardian"
                     closest_hole.start_grow()
                     total_semillas_plantadas += 1
                     play_sfx("sfx_plant", assets_dir)
+                    # mensaje
+                    show_message = "Árbol plantado"
+                    message_timer = message_duration
                     return
         except Exception as e:
             print(f"ADVERTENCIA: Interacción: {e}")
@@ -483,6 +514,12 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str = "EcoGuardian"
         mouse_click = False
         mouse_pos = pygame.mouse.get_pos()
         
+        # actualizar temporizador de mensajes
+        if message_timer > 0.0:
+            message_timer = max(0.0, message_timer - dt_sec)
+            if message_timer == 0.0:
+                show_message = ""
+
         # --- Manejo de Eventos ---
         events = pygame.event.get() # Obtener eventos UNA VEZ
         for ev in events:
@@ -554,10 +591,56 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str = "EcoGuardian"
             screen.blit(img_victoria, (0, 0))
         else:
             screen.blit(img_fondo, (0,0))
-            for s in seeds: s.draw(screen)
-            for h in holes: h.draw(screen, img_arbol, img_semilla)
+
+            # Dibujar semillas y mostrar icono E + texto si el jugador está cerca
+            for s in seeds:
+                s.draw(screen)
+                if not s.taken:
+                    # detectar proximidad (pequeña ampliación para comodidad)
+                    if player.rect.colliderect(s.rect.inflate(18, 18)):
+                        # dibujar icono E encima de la semilla
+                        icon_pos = (s.rect.centerx, s.rect.top - int(H * 0.035))
+                        ib = icon_e_bg.copy()
+                        # pulso sutil en alpha para llamar la atención
+                        pulse = 0.5 + 0.5 * math.sin(pygame.time.get_ticks() / 180.0)
+                        try:
+                            ib.set_alpha(int(220 * (0.6 + 0.4 * pulse)))
+                        except Exception:
+                            pass
+                        recti = ib.get_rect(center=icon_pos)
+                        screen.blit(ib, recti)
+                        # texto "Recoger semilla (E)" justo abajo del icono
+                        recog = small_font.render("Recoger semilla (E)", True, (255, 255, 255))
+                        recog_bg = pygame.Surface((recog.get_width() + 10, recog.get_height() + 6), pygame.SRCALPHA)
+                        pygame.draw.rect(recog_bg, (0,0,0,160), recog_bg.get_rect(), border_radius=6)
+                        recog_bg.blit(recog, recog.get_rect(center=recog_bg.get_rect().center))
+                        rrect = recog_bg.get_rect(midtop=(recti.centerx, recti.bottom + 4))
+                        screen.blit(recog_bg, rrect)
+
+            # Dibujar hoyos y mostrar icono E + texto si el jugador tiene semilla
+            for h in holes:
+                h.draw(screen, img_arbol, img_semilla)
+                if not h.has_tree and carrying_seed and player.rect.colliderect(h.rect.inflate(20,20)):
+                    icon_pos = (h.rect.centerx, h.rect.top - int(H * 0.035))
+                    ib = icon_e_bg.copy()
+                    pulse = 0.5 + 0.5 * math.sin(pygame.time.get_ticks() / 180.0)
+                    try:
+                        ib.set_alpha(int(220 * (0.6 + 0.4 * pulse)))
+                    except Exception:
+                        pass
+                    recti = ib.get_rect(center=icon_pos)
+                    screen.blit(ib, recti)
+                    recog = small_font.render("Plantar semilla (E)", True, (255, 255, 255))
+                    recog_bg = pygame.Surface((recog.get_width() + 10, recog.get_height() + 6), pygame.SRCALPHA)
+                    pygame.draw.rect(recog_bg, (0,0,0,160), recog_bg.get_rect(), border_radius=6)
+                    recog_bg.blit(recog, recog.get_rect(center=recog_bg.get_rect().center))
+                    rrect = recog_bg.get_rect(midtop=(recti.centerx, recti.bottom + 4))
+                    screen.blit(recog_bg, rrect)
+
+            # Dibujar jugador (incluye si lleva semilla)
             player.draw(screen)
             
+            # HUD
             hud = [
                 "Nivel 2 – La Calle (Fácil, con tiempo)",
                 "Mover: WASD/Flechas | Recoger/Plantar: E / Enter | Pausa: Espacio",
@@ -591,6 +674,17 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str = "EcoGuardian"
         cy = panel_rect.centery
         screen.blit(sh,  sh.get_rect(center=(cx + 2, cy + 2)))
         screen.blit(txt, txt.get_rect(center=(cx, cy)))
+
+        # Mensaje temporal central (Semilla recogida / Árbol plantado)
+        if show_message and message_timer > 0.0:
+            # alpha basado en tiempo restante (fade out)
+            a = int(255 * (message_timer / message_duration))
+            msg_surf = popup_font.render(show_message, True, (255, 255, 255))
+            bg = pygame.Surface((msg_surf.get_width() + 20, msg_surf.get_height() + 12), pygame.SRCALPHA)
+            pygame.draw.rect(bg, (0, 0, 0, 200), bg.get_rect(), border_radius=10)
+            bg.blit(msg_surf, msg_surf.get_rect(center=bg.get_rect().center))
+            bg.set_alpha(a)
+            screen.blit(bg, bg.get_rect(midtop=(W//2, int(H * 0.06))))
 
         if game_over:
             overlay = pygame.Surface((W, H), pygame.SRCALPHA)
