@@ -89,14 +89,22 @@ def _load_character_preview(assets_dir: Path, char_folder: str, max_w: int, max_
         print(f"WARN: No se encuentra la carpeta {char_folder}")
         ph = pygame.Surface((max_w, max_h), pygame.SRCALPHA); ph.fill((0,0,0,0)); return ph # Placeholder transparente
 
-    # === CAMBIO: Priorizar 'ecoguardian_walk_down_1' ===
+    # === ¡AQUÍ ESTÁ LA LÓGICA! ===
+    # Determina el prefijo basado en la carpeta
+    if "M" in char_folder.upper():
+        prefix = "womanguardian"
+    else:
+        prefix = "ecoguardian"
+    # ===============================
+
+    # === CAMBIO: Priorizar 'walk_down_1' usando el PREFIJO ===
     candidates = [
-        "ecoguardian_walk_down_1", # <-- ¡Prioridad!
-        "ecoguardian_down_idle", 
-        "ecoguardian_frente", 
-        "idle_down", 
-        "ecoguardian_walk_down_0",
-        "ecoguardian"
+        f"{prefix}_walk_down_1", # <-- ¡Prioridad!
+        f"{prefix}_down_idle", 
+        f"{prefix}_frente", 
+        f"{prefix}_idle_down", 
+        f"{prefix}_walk_down_0",
+        prefix # Fallback al prefijo solo (ej. "womanguardian.png")
     ]
     # ===================================================
     
@@ -144,7 +152,7 @@ class SeleccionPersonajeScreen:
 
         # 3. Título (el tuyo)
         self.title_img = load_image(self.assets_dir, ["title_personaje", "title_seleccion_personaje",
-                                                     "elige_personaje", "elija_personaje", "elige_tu_personaje"])
+                                                      "elige_personaje", "elija_personaje", "elige_tu_personaje"])
         if self.title_img:
             self.title_img = scale_to_width(self.title_img, int(self.w*0.40))
             self.title_rect = self.title_img.get_rect(center=(self.w//2, self.PAD_TOP + self.title_img.get_height()//2))
@@ -285,7 +293,7 @@ class SeleccionPersonajeScreen:
                     # === CAMBIO: Comprobar clic en el botón Back ===
                     # Usamos 'current_back_rect' para la colisión
                     if self.back_rect.collidepoint(mouse_pos):
-                         clicked_back = True
+                        clicked_back = True
 
             # --- Botón Confirmar ---
             if self.btn_confirmar.update(events):
