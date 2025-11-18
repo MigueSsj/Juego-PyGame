@@ -4,22 +4,164 @@
 
 <h1 align="center">Guardianes del planeta!</h1>
 
-<p align="center">
-“Guardianes del Planeta” es un videojuego educativo desarrollado con Python y Pygame, creado como parte de un Proyecto Integrador enfocado en el Objetivo de Desarrollo Sostenible (ODS) 11: Ciudades y comunidades sostenibles.
-</p>
+🎯 Objetivo General del Videojuego
 
-## Objetivo general
-Desarrollar un videojuego educativo en Python con Pygame, que promueva la concientización ambiental y fomente acciones sostenibles en los jugadores mediante la interacción y el aprendizaje lúdico, contribuyendo al cumplimiento del ODS 11: Ciudades y comunidades sostenibles.
+Desarrollar un videojuego educativo en Python con Pygame que fomente la concientización ambiental en los jugadores, motivándolos a participar en acciones sostenibles mientras aprenden jugando. Todo esto alineado con el Objetivo de Desarrollo Sostenible 11.
+
+🎯 Objetivos Específicos
+
+✔️ Educar a los jugadores sobre el impacto de sus acciones en el medio ambiente.
+✔️ Promover hábitos sostenibles y buenas prácticas ecológicas.
+✔️ Concienciar sobre la importancia de mantener entornos limpios, saludables y seguros.
 
 
 ## Objetivos específicos
+**Educar** 
+**Promover**
+**Concienizar**
 
-1.-Diseñar y programar niveles interactivos que representen entornos urbanos contaminados que el jugador debe limpiar y restaurar.
+🎬 Trailer Oficial
+<div align="center">
 
-2.-Implementar mecánicas de juego (movimiento, energía, puntuación y progreso) que motiven la participación y el aprendizaje ambiental.
+(Trailer disponible próximamente)
+📽️ <strong>Muy pronto aquí podrás ver el trailer oficial</strong>
 
-3.-Crear gráficos y animaciones en pixel-art que refuercen el mensaje ecológico y sean atractivos para el público infantil y juvenil.
+<img src="https://media.tenor.com/9CkR5vWckAUAAAAC/loading-load.gif" width="120"> </div>
+⭐ Características Principales
+🗺️ Tres niveles distintos y educativos
 
-4.-Integrar efectos de sonido y música ambiental para mejorar la experiencia inmersiva del jugador.
+Cada nivel representa un entorno real y una misión ecológica distinta:
 
-5.-Fomentar valores de responsabilidad, trabajo en equipo y cuidado del entorno, mostrando el impacto positivo de las acciones ecológicas en la comunidad.
+🟢 Parque – Recoge basura y limpia la zona
+🟡 Calle – Siembra semillas y ayuda a que crezcan árboles
+🔵 Ciudad – Repara edificios y rescata la comunidad
+
+<div align="center"> <img src="LINK_NIVEL_1" width="260"> <img src="LINK_NIVEL_2" width="260"> <img src="LINK_NIVEL_3" width="260"> </div>
+⏸️ Menú de Pausa Interactivo
+
+Permite:
+🔁 Reiniciar la partida
+⏸️ Pausar
+▶️ Reanudar
+
+<div align="center"> <img src="LINK_IMAGEN_PAUSA" width="350"> </div>
+🧍‍♂️🧍‍♀️ Selección de Personaje
+
+El jugador puede elegir entre:
+
+👦 Personaje Masculino
+👩 Personaje Femenino
+
+Ambos con animaciones fluidas, sprites personalizados y estilo llamativo.
+
+<div align="center"> <img src="LINK_PERSONAJE_HOMBRE" width="220"> <img src="LINK_PERSONAJE_MUJER" width="220"> </div>
+🎮 Selección de Dificultad
+
+Dos modos disponibles en cada nivel:
+
+🟢 Principiante – Más tiempo, menos dificultad
+🔴 Avanzado – Tiempo reducido y mecánicas más exigentes
+
+🌐 Cambio de Idioma
+
+Disponible en:
+🇪🇸 Español
+🇬🇧 Inglés
+
+<div align="center"> <img src="LINK_PANTALLA_IDIOMA" width="350"> </div>
+🕹️ Controles del Juego
+<div align="center">
+🔄 Movimiento
+
+⬆️⬇️⬅️➡️ o W A S D
+
+🗑️ Acción principal
+
+<kbd>E</kbd> – Recoger basura, plantar semillas, interactuar
+
+🛠️ Reparar edificios
+
+<kbd>R</kbd>
+
+</div>
+⚙️ Mecánicas del Juego
+❌ Sistema de LOSE
+
+El jugador pierde si el cronómetro llega a cero.
+Cada misión debe completarse antes de que termine el tiempo.
+
+🏆 Sistema de WIN
+
+Los objetivos por nivel son:
+
+🟢 Nivel 1: Recoger toda la basura
+🌱 Nivel 2: Plantar todas las semillas
+🏚️ Nivel 3: Reparar todos los edificios
+
+<div align="center"> <img src="LINK_WIN_1" width="260"> <img src="LINK_WIN_2" width="260"> <img src="LINK_WIN_3" width="260"> </div>
+⏱️ Cronómetro Dinámico
+
+Cuando quedan 30 segundos, el tiempo se vuelve rojo para dar sensación de urgencia.
+La duración cambia según dificultad y nivel.
+
+🧩 Estructura del Proyecto
+Guardianes_del_planeta/
+│── assets/
+│   ├── personajes/
+│   ├── niveles/
+│   ├── sonidos/
+│   ├── efectos/
+│   └── ui/
+│
+│── src/
+│   ├── main.py
+│   ├── settings.py
+│   ├── niveles.py
+│   ├── personajes.py
+│   ├── mecanicas.py
+│   ├── idioma.py
+│   └── utils.py
+│
+└── README.md
+
+🛠️ Instalación y Ejecución
+1️⃣ Clonar el repositorio
+git clone https://github.com/TU_USUARIO/guardianes_del_planeta.git
+cd guardianes_del_planeta
+
+2️⃣ Instalar dependencias
+pip install -r requirements.txt
+
+3️⃣ Ejecutar el juego
+python src/main.py
+
+🤝 Cómo Contribuir
+
+¡Toda ayuda es bienvenida! Puedes contribuir de estas formas:
+
+✔️ Mejorando código
+✔️ Añadiendo nuevos sprites o niveles
+✔️ Mejorando la documentación
+✔️ Reportando bugs
+
+Para contribuir:
+
+Haz un fork del repo
+
+Crea una rama: git checkout -b mejora-x
+
+Haz tus cambios
+
+Envia un Pull Request
+
+👥 Créditos
+
+👨‍💻 Desarrollador principal: Tu nombre
+🎨 Diseño gráfico: Tu nombre / Equipo
+📚 Documentación: Tu nombre
+🌿 Proyecto basado en: Objetivo de Desarrollo Sostenible 11 (ODS 11)
+
+💚 Gracias por jugar Guardianes del Planeta
+<div align="center"> <img src="https://media.tenor.com/uO2jZO4kQH4AAAAC/earth-love.gif" width="150"> </div>
+
+Si te gustó el proyecto, ¡no olvides dejar una ⭐ en GitHub!ode**
