@@ -239,7 +239,7 @@ while running:
                                 level = NivelClass(screen, ASSETS, personaje=char_folder, dificultad=dif)
                             except TypeError:
                                 level = NivelClass()
-
+        
                         # loop del nivel
                         in_level = True
                         while in_level:

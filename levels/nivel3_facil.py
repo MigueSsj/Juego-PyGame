@@ -4,7 +4,7 @@ import sys
 import re
 import math
 from pathlib import Path
-from typing import Optional, List
+from typing import Optional, List, Tuple
 
 # --- Importar música (con fallback) ---
 try:
@@ -19,6 +19,8 @@ except ImportError:
 # --- Colores ---
 BLANCO = (255, 255, 255); NEGRO = (0, 0, 0); VERDE = (0, 255, 0)
 GRIS = (100, 100, 100); ROJO_OSCURO = (100, 0, 0)
+# === CAMBIO: Añadido color para debug ===
+DEBUG_COLOR_ROJO = (255, 0, 0)
 
 # --- Constantes del Nivel ---
 TIEMPO_PARA_REPARAR = 120  # 120 frames ~= 2s a 60fps
@@ -31,9 +33,18 @@ SUSPENSE_TIME_MS = 30_000  # 30 segundos
 _image_cache: dict[str, pygame.Surface] = {}
 
 def safe_load_image(path: Path) -> pygame.Surface:
+    """Carga una imagen DESDE UN PATH EXACTO. Usado internamente por load_image."""
     key = str(path)
     if key in _image_cache:
         return _image_cache[key]
+    
+    if not path.exists():
+        print(f"ERROR: No se pudo encontrar la imagen en: {path}")
+        # Devuelve un placeholder rojo brillante si la imagen no se encuentra
+        surf = pygame.Surface((100, 100))
+        surf.fill((255, 0, 128))
+        return surf
+        
     img = pygame.image.load(str(path))
     # convert_alpha for pngs, convert otherwise
     surf = img.convert_alpha() if path.suffix.lower() == ".png" else img.convert()
@@ -41,6 +52,7 @@ def safe_load_image(path: Path) -> pygame.Surface:
     return surf
 
 def find_by_stem(assets_dir: Path, stem: str) -> Optional[Path]:
+    """Busca .png, .jpg, o .jpeg que coincida con el stem."""
     exts = (".png", ".jpg", ".jpeg")
     for ext in exts:
         p = assets_dir / f"{stem}{ext}"
@@ -52,17 +64,27 @@ def find_by_stem(assets_dir: Path, stem: str) -> Optional[Path]:
     return min(cands, key=lambda p: len(p.name)) if cands else None
 
 def load_image(assets_dir: Path, stems: List[str]) -> Optional[pygame.Surface]:
+    """Carga la primera imagen que encuentre de una lista de stems."""
     for stem in stems:
         p = find_by_stem(assets_dir, stem)
         if p:
-            return safe_load_image(p)
+            return safe_load_image(p) # Usa el helper interno
     return None
 
 # ===============================================================
 # CLASE PLAYER Y load_char_frames (igual funcionalidad que ya tenías)
 # ===============================================================
 def load_char_frames(char_dir: Path, target_h: int) -> dict[str, list[pygame.Surface] | pygame.Surface]:
-    if not char_dir.exists(): raise FileNotFoundError(f"No se encontró la carpeta '{char_dir}'")
+    if not char_dir.exists(): 
+        # Fallback si la carpeta seleccionada no existe
+        alt_folder_name = "PERSONAJE H" if "M" in char_dir.name else "PERSONAJE M"
+        alt_dir = char_dir.parent / alt_folder_name
+        if alt_dir.exists():
+            print(f"WARN: Carpeta '{char_dir.name}' no encontrada. Usando '{alt_folder_name}'.")
+            char_dir = alt_dir
+        else:
+            raise FileNotFoundError(f"No se encontró la carpeta 'assets/{char_dir.name}' ni una alternativa.")
+            
     def _load_seq(prefix: str) -> list[pygame.Surface]:
         files: list[Path] = []; exts = (".png", ".jpg", ".jpeg")
         for ext in exts: files += list(char_dir.glob(f"{prefix}_[0-9]*{ext}"))
@@ -158,23 +180,67 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str, dificultad: st
 
     # --- 1. Cargar recursos (UNA SOLA VEZ) ---
     try:
-        # Cargar las 16 imágenes y escalar solo una vez
-        names = [
-            'original.jpg','img_1_top_izq.jpg','img_1_top_medio.png','img_1_abajo_izq.png','img_1_abajo_der.png',
-            'img_2_ti_tm.png','img_2_ti_ai.png','img_2_ti_ad.png','img_2_tm_ai.png','img_2_tm_ad.png','img_2_ai_ad.png',
-            'img_3_ti_tm_ai.png','img_3_ti_tm_ad.png','img_3_ti_ai_ad.png','img_3_tm_ai_ad.png','img_4_todo.png'
-        ]
-        imagenes = [ safe_load_image(assets_dir / n) for n in names ]
-        imagenes_escaladas = [ pygame.transform.smoothscale(img, (ANCHO, ALTO)) for img in imagenes ]
+        # Placeholder para mapas (se usa si una imagen falta)
+        placeholder_map_img = pygame.Surface((ANCHO, ALTO))
+        placeholder_map_img.fill((255, 0, 128)) # Rosa brillante
+        
+        def get_map_img(stem: str, fallback_stem: Optional[str] = None):
+            """Carga una imagen del mapa, o su fallback, o un placeholder."""
+            img = load_image(assets_dir, [stem])
+            if img:
+                return img
+            # Si falla, intenta cargar el fallback (ej. "ced2" si "2y4" falta)
+            if fallback_stem:
+                img_fallback = load_image(assets_dir, [fallback_stem])
+                if img_fallback:
+                    print(f"WARN: No se encontró '{stem}'. Usando fallback '{fallback_stem}'.")
+                    return img_fallback
+            # Si todo falla, usa el placeholder
+            print(f"ERROR: No se encontró '{stem}' ni fallback. Usando placeholder.")
+            return placeholder_map_img
+
+        # === CAMBIO: Cargar el mapa de fondo único ===
+        fondo_mapa_escalado = pygame.transform.smoothscale(get_map_img("1366x768 ever"), (ANCHO, ALTO))
+        
+        # === CAMBIO: Cargar las 14 imágenes en un diccionario ===
+        # (ti=top_izq(1), tm=top_medio(2), ai=abajo_izq(3), ad=abajo_der(4))
+        
+        MAPA_ESTADOS = {
+            # 0 reparados
+            (False, False, False, False): get_map_img("1366x768 ever"),
+            # 1 reparado
+            (True,  False, False, False): get_map_img("ced1"), # 1
+            (False, True,  False, False): get_map_img("ced2"), # 2
+            (False, False, True,  False): get_map_img("ced3f"), # 3
+            (False, False, False, True):  get_map_img("1366x768 ever", "1366x768 ever"), # 4 (FALTA! Usando inicial)
+            # 2 reparados
+            (True,  True,  False, False): get_map_img("1y2"), # 1+2
+            (True,  False, True,  False): get_map_img("1y3"), # 1+3
+            (True,  False, False, True):  get_map_img("1y4"), # 1+4
+            (False, True,  True,  False): get_map_img("2y3"), # 2+3
+            (False, True,  False, True):  get_map_img("ced2", "ced2"), # 2+4 (FALTA! Usando "Solo 2")
+            (False, False, True,  True):  get_map_img("3y4"), # 3+4
+            # 3 reparados
+            (True,  True,  True,  False): get_map_img("12y3"), # 1+2+3
+            (True,  True,  False, True):  get_map_img("12y4"), # 1+2+4
+            (True,  False, True,  True):  get_map_img("13y4"), # 1+3+4
+            (False, True,  True,  True):  get_map_img("34y2"), # 2+3+4
+            # 4 reparados
+            (True,  True,  True,  True):  get_map_img("123y4"), # 1+2+3+4
+        }
+        
+        # Escalar todas las imágenes del mapa de una vez
+        imagenes_escaladas = {}
+        for estado, img in MAPA_ESTADOS.items():
+            imagenes_escaladas[estado] = pygame.transform.smoothscale(img, (ANCHO, ALTO))
 
         # win/lose (opcional)
         win_img = None; lose_img = None
-        for ext in (".jpg", ".png"):
-            p_win = assets_dir / f"win_level3{ext}"
-            if p_win.exists(): win_img = safe_load_image(p_win); win_img = pygame.transform.smoothscale(win_img, (ANCHO, ALTO)); break
-        for ext in (".jpg", ".png"):
-            p_lose = assets_dir / f"lose_level3{ext}"
-            if p_lose.exists(): lose_img = safe_load_image(p_lose); lose_img = pygame.transform.smoothscale(lose_img, (ANCHO, ALTO)); break
+        win_img = load_image(assets_dir, ["win_level3"])
+        lose_img = load_image(assets_dir, ["lose_level3"])
+        if win_img: win_img = pygame.transform.smoothscale(win_img, (ANCHO, ALTO))
+        if lose_img: lose_img = pygame.transform.smoothscale(lose_img, (ANCHO, ALTO))
+
 
         pausa_dir = assets_dir / "PAUSA"
         pausa_panel_img = load_image(pausa_dir, ["nivelA 2", "panel_pausa", "pausa_panel"])
@@ -188,24 +254,42 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str, dificultad: st
 
     except Exception as e:
         print(f"Error cargando imágenes del Nivel 3: {e}")
+        stop_level_music() # Detener música si la carga falla
         return "menu"
 
     # --- 2. Zonas y jugador ---
-    zona_reparar_top_izq = pygame.Rect(0, 0, ANCHO // 3, ALTO // 2 - 50)
-    zona_reparar_top_medio = pygame.Rect(ANCHO // 3, 0, ANCHO // 3, ALTO // 2 - 50)
-    zona_reparar_abajo_izq = pygame.Rect(0, ALTO // 2 + 50, ANCHO // 3, ALTO // 2 - 50)
-    zona_reparar_abajo_der = pygame.Rect(ANCHO * 2 // 3, ALTO // 2 + 50, ANCHO // 3, ALTO // 2 - 50)
+    # === CAMBIO: Zonas de reparación. AJUSTA ESTAS COORDENADAS ===
+    # (x, y, ancho, alto)
+    zona_reparar_top_izq = pygame.Rect(100, 100, 150, 150)  # Ejemplo
+    zona_reparar_top_medio = pygame.Rect(400, 100, 150, 150) # Ejemplo
+    zona_reparar_abajo_izq = pygame.Rect(100, 400, 150, 150) # Ejemplo
+    zona_reparar_abajo_der = pygame.Rect(700, 400, 150, 150) # Ejemplo
 
     try:
         ruta_personaje = assets_dir / personaje
         frames_jugador = load_char_frames(ruta_personaje, target_h=int(ALTO * 0.12))
     except FileNotFoundError:
         print(f"Error: No se encontraron los frames del personaje en {ruta_personaje}")
+        stop_level_music() # Detener música si la carga falla
         return "menu"
 
     limites_pantalla = screen.get_rect().inflate(-20, -20)
     spawn_pos = (ANCHO // 2, ALTO // 2)
     jugador = Player(frames_jugador, spawn_pos, limites_pantalla, speed=300)
+
+    # ===============================================================
+    # === ¡AQUÍ VAN LOS STOPS! ===
+    # === CAMBIO: Añadidas tus 7 coordenadas ===
+    COLLISION_RECTS = [
+        pygame.Rect(876, 12, 253, 292),    # 1
+        pygame.Rect(901, 301, 275, 243),   # 2
+        pygame.Rect(923, 558, 250, 253),   # 3
+        pygame.Rect(218, 628, 260, 208),   # 4
+        pygame.Rect(-2, 443, 244, 331),    # 5
+        pygame.Rect(331, 34, 235, 300),    # 6
+        pygame.Rect(9, 39, 263, 266)       # 8 (el 7 que faltaba)
+    ]
+    # ===============================================================
 
     # --- 4. Estado del juego ---
     estado_reparacion = { "top_izq": False, "top_medio": False, "abajo_izq": False, "abajo_der": False }
@@ -218,6 +302,51 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str, dificultad: st
 
     # start music (no heavy op inside loop)
     start_level_music(assets_dir)
+    
+    # =====================================================================
+    # === ¡NUEVO! PANTALLA DE INSTRUCCIONES ===
+    # =====================================================================
+    # (Asegúrate de guardar tu imagen como 'instruccion_nivel_3.png' en assets/)
+    instruccion_img = load_image(assets_dir, ["instruccion_nivel_3"])
+    if instruccion_img:
+        # Escalar la imagen de instrucciones para que quepa
+        img_w, img_h = instruccion_img.get_size()
+        scale_ratio = min((ANCHO * 0.8) / img_w, (ALTO * 0.8) / img_h)
+        instruccion_img = pygame.transform.smoothscale(
+            instruccion_img, (int(img_w * scale_ratio), int(img_h * scale_ratio))
+        )
+        instruccion_rect = instruccion_img.get_rect(center=(ANCHO // 2, ALTO // 2))
+
+        # Crear un overlay oscuro
+        overlay = pygame.Surface((ANCHO, ALTO), pygame.SRCALPHA)
+        overlay.fill((0, 0, 0, 180)) # Negro semitransparente
+
+        waiting_for_start = True
+        while waiting_for_start:
+            for e in pygame.event.get():
+                if e.type == pygame.QUIT:
+                    stop_level_music()
+                    return "salir" # Usar "salir" para cerrar el juego
+                if e.type == pygame.KEYDOWN:
+                    if e.key in (pygame.K_e, pygame.K_SPACE, pygame.K_RETURN):
+                        waiting_for_start = False
+                if e.type == pygame.MOUSEBUTTONDOWN and e.button == 1:
+                    waiting_for_start = False
+
+            # Dibujar
+            screen.blit(fondo_mapa_escalado, (0,0)) # Fondo del nivel
+            screen.blit(overlay, (0, 0)) # Overlay oscuro
+            screen.blit(instruccion_img, instruccion_rect) # Instrucción
+
+            pygame.display.flip()
+            reloj.tick(60)
+        
+        play_sfx("select", assets_dir) # Sonido de clic al empezar
+
+    # =====================================================================
+    # === FIN DE PANTALLA DE INSTRUCCIONES ===
+    # =====================================================================
+
 
     # --- Bucle principal ---
     ejecutando = True
@@ -251,48 +380,59 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str, dificultad: st
                 start_suspense_music(assets_dir); suspense_music_started = True
             if remaining_ms <= 0:
                 derrota = True; stop_level_music(); tiempo_fin_juego = 0; continue
+            
             jugador.handle_input(dt)
+
+            # === ¡NUEVO! Comprobar colisiones con los "Stops" ===
+            for wall in COLLISION_RECTS:
+                if jugador.rect.colliderect(wall):
+                    jugador.revert_position() # Choca y regresa
+                    break # No necesita comprobar más muros
+            
             teclas = pygame.key.get_pressed(); zona_activa = None
             if not estado_reparacion["top_izq"] and jugador.rect.colliderect(zona_reparar_top_izq): zona_activa = "top_izq"
             elif not estado_reparacion["top_medio"] and jugador.rect.colliderect(zona_reparar_top_medio): zona_activa = "top_medio"
             elif not estado_reparacion["abajo_izq"] and jugador.rect.colliderect(zona_reparar_abajo_izq): zona_activa = "abajo_izq"
             elif not estado_reparacion["abajo_der"] and jugador.rect.colliderect(zona_reparar_abajo_der): zona_activa = "abajo_der"
+            
             if zona_activa and teclas[pygame.K_r]:
                 reparando_actualmente = zona_activa; progreso_reparacion += 1
                 if progreso_reparacion >= TIEMPO_PARA_REPARAR:
                     estado_reparacion[zona_activa] = True; progreso_reparacion = 0; reparando_actualmente = None
-                    play_sfx("sfx_plant", assets_dir)
+                    play_sfx("sfx_plant", assets_dir) # Reusamos el sonido de plantar
                     if all(estado_reparacion.values()):
                         victoria = True; stop_level_music(); tiempo_fin_juego = 0
             else:
                 progreso_reparacion = 0; reparando_actualmente = None
 
-        # Dibujo según estado (usamos la lista ya escalada)
-        ti = estado_reparacion["top_izq"]; tm = estado_reparacion["top_medio"]
-        ai = estado_reparacion["abajo_izq"]; ad = estado_reparacion["abajo_der"]
+        # --- Dibujo ---
+        
+        # === CAMBIO: Dibujar el mapa correcto según el estado ===
+        ti = estado_reparacion["top_izq"]
+        tm = estado_reparacion["top_medio"]
+        ai = estado_reparacion["abajo_izq"]
+        ad = estado_reparacion["abajo_der"]
+        
+        # Crear la "llave" (key) para el diccionario de imágenes
+        estado_actual = (ti, tm, ai, ad)
+        
+        # Dibujar la imagen escalada que corresponde a ese estado
+        # Fallback por si la combinación (rara) no estuviera en el dict
+        screen.blit(imagenes_escaladas.get(estado_actual, fondo_mapa_escalado), (0,0))
+        
+        # ================================================
+        # === CAMBIO: Dibujar colisiones para debug ===
+        for rect in COLLISION_RECTS:
+            pygame.draw.rect(screen, DEBUG_COLOR_ROJO, rect, 2) # '2' = borde de 2px
+        # ================================================
 
-        index = 0
-        if ti and tm and ai and ad:
-            index = 15
-        else:
-            # mapeo simplificado: comprobamos combinaciones para elegir index (mantengo tu orden)
-            if not ti and not tm and not ai and not ad: index = 0
-            elif ti and not tm and not ai and not ad: index = 1
-            elif not ti and tm and not ai and not ad: index = 2
-            elif not ti and not tm and ai and not ad: index = 3
-            elif not ti and not tm and not ai and ad: index = 4
-            elif ti and tm and not ai and not ad: index = 5
-            elif ti and not tm and ai and not ad: index = 6
-            elif ti and not tm and not ai and ad: index = 7
-            elif not ti and tm and ai and not ad: index = 8
-            elif not ti and tm and not ai and ad: index = 9
-            elif not ti and not tm and ai and ad: index = 10
-            elif ti and tm and ai and not ad: index = 11
-            elif ti and tm and not ai and ad: index = 12
-            elif ti and not tm and ai and ad: index = 13
-            elif not ti and tm and ai and ad: index = 14
+        # === CAMBIO: Mostrar las zonas dañadas (opcional, para debug) ===
+        # (Si quieres ver las zonas, descomenta estas líneas)
+        # if not estado_reparacion["top_izq"]: pygame.draw.rect(screen, (255,0,0,50), zona_reparar_top_izq)
+        # if not estado_reparacion["top_medio"]: pygame.draw.rect(screen, (255,0,0,50), zona_reparar_top_medio)
+        # if not estado_reparacion["abajo_izq"]: pygame.draw.rect(screen, (255,0,0,50), zona_reparar_abajo_izq)
+        # if not estado_reparacion["abajo_der"]: pygame.draw.rect(screen, (255,0,0,50), zona_reparar_abajo_der)
 
-        screen.blit(imagenes_escaladas[index], (0,0))
         jugador.draw(screen)
 
         if reparando_actualmente:
@@ -393,7 +533,8 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str, dificultad: st
         if victoria:
             if win_img: screen.blit(win_img, (0,0))
             else:
-                screen.blit(imagenes_escaladas[15], (0,0))
+                # === CAMBIO: Mostrar el fondo final ===
+                screen.blit(imagenes_escaladas.get((True, True, True, True), fondo_mapa_escalado), (0,0))
                 overlay = pygame.Surface((ANCHO, ALTO), pygame.SRCALPHA); overlay.fill((0,150,0,170))
                 screen.blit(overlay, (0,0))
                 texto_vic = font_titulo.render("¡Plaza Reparada!", True, BLANCO)
