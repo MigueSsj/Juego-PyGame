@@ -22,20 +22,21 @@ BLANCO = (255, 255, 255); NEGRO = (0, 0, 0); VERDE = (0, 255, 0)
 GRIS = (100, 100, 100); ROJO_OSCURO = (100, 0, 0)
 
 # --- Constantes del Nivel ---
-TIEMPO_PARA_REPARAR = 120  # 2 segundos
+TIEMPO_PARA_REPARAR = 120  # 2 segundos (60 frames * 2)
 TOTAL_MS = 80_000          # 80 segundos
 SUSPENSE_TIME_MS = 30_000  # 30 segundos
 
-# --- Zonas seguras para que aparezca la herramienta ---
+# --- CORRECCIÓN IMPORTANTE: Zonas seguras LEJOS del centro ---
+# El jugador nace en el centro (aprox 400, 300), así que ponemos las herramientas en las esquinas.
 SAFE_SPAWN_AREAS = [
-    pygame.Rect(250, 250, 100, 200), # Camino vertical izquierdo
-    pygame.Rect(550, 250, 100, 200), # Camino vertical derecho
-    pygame.Rect(350, 400, 200, 100), # Camino horizontal inferior
-    pygame.Rect(350, 200, 200, 100), # Camino horizontal superior
+    pygame.Rect(50, 50, 100, 100),          # Esquina Superior Izquierda
+    pygame.Rect(650, 50, 100, 100),         # Esquina Superior Derecha
+    pygame.Rect(50, 450, 100, 100),         # Esquina Inferior Izquierda
+    pygame.Rect(650, 450, 100, 100),        # Esquina Inferior Derecha
 ]
 
 # ===============================================================
-# === SECCIÓN DE AYUDA (Helpers) (Copiada de Nivel 2) ===
+# === SECCIÓN DE AYUDA (Helpers) ===
 # ===============================================================
 
 def find_by_stem(assets_dir: Path, stem: str) -> Optional[Path]:
@@ -66,7 +67,6 @@ def random_point_in_rect(r: pygame.Rect) -> Tuple[int,int]:
 # ===============================================================
 
 def load_char_frames(char_dir: Path, target_h: int) -> dict[str, list[pygame.Surface] | pygame.Surface]:
-    # (Tu código de load_char_frames)
     if not char_dir.exists(): raise FileNotFoundError(f"No se encontró la carpeta '{char_dir}'")
     def _load_seq(prefix: str) -> list[pygame.Surface]:
         files: list[Path] = []; exts = (".png", ".jpg", ".jpeg")
@@ -175,8 +175,16 @@ class Tool:
         self.image = img
         self.rect = img.get_rect(center=pos)
         self.taken = False
+        # Añadimos pequeña flotación para que sea más visible
+        self.y_base = pos[1]
+        self.float_timer = 0.0
+
     def draw(self, surf: pygame.Surface):
-        if not self.taken: surf.blit(self.image, self.rect)
+        if not self.taken: 
+            self.float_timer += 0.1
+            offset = math.sin(self.float_timer) * 5 # Flota 5 pixeles
+            self.rect.centery = self.y_base + int(offset)
+            surf.blit(self.image, self.rect)
 
 # ===============================================================
 # === FUNCIÓN PRINCIPAL DEL NIVEL 3 (MODO DIFÍCIL) ===
@@ -194,7 +202,6 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str, dificultad: st
 
     # --- 1. Cargar Recursos del Nivel ---
     try:
-        # (Tu sección de carga de 16 imágenes)
         img_0_roto = pygame.image.load(assets_dir / 'original.jpg').convert()
         img_1_top_izq = pygame.image.load(assets_dir / 'img_1_top_izq.jpg').convert()
         img_1_top_medio = pygame.image.load(assets_dir / 'img_1_top_medio.png').convert()
@@ -242,8 +249,11 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str, dificultad: st
 
         img_herramienta = load_image(assets_dir, ["herramienta"])
         if not img_herramienta:
-            print("WARN: No se encontró 'herramienta.png', usando un cuadrado rojo.")
-            img_herramienta = pygame.Surface((30, 30)); img_herramienta.fill((255, 0, 0))
+            print("WARN: No se encontró 'herramienta.png', usando un cuadrado amarillo.")
+            # Hacemos un cuadrado AMARILLO brillante de Fallback
+            img_herramienta = pygame.Surface((40, 40))
+            img_herramienta.fill((255, 255, 0)) 
+            pygame.draw.rect(img_herramienta, (0,0,0), (0,0,40,40), 2) # Borde negro
         else:
             img_herramienta = pygame.transform.smoothscale(img_herramienta, (55, 55))
 
@@ -254,15 +264,11 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str, dificultad: st
         return "menu" 
 
     # --- 2. Definir Zonas de Reparación (¡¡¡AHORA ABARCAN TODO EL EDIFICIO!!!) ---
-    # Coordenadas aproximadas para cubrir el área visual de cada edificio dañado.
-    zona_reparar_top_izq = pygame.Rect(0, 0, ANCHO // 3, ALTO // 2 - 50) # Edificio superior izquierdo
-    zona_reparar_top_medio = pygame.Rect(ANCHO // 3, 0, ANCHO // 3, ALTO // 2 - 50) # Edificio superior central
-    zona_reparar_abajo_izq = pygame.Rect(0, ALTO // 2 + 50, ANCHO // 3, ALTO // 2 - 50) # Edificio inferior izquierdo
-    zona_reparar_abajo_der = pygame.Rect(ANCHO * 2 // 3, ALTO // 2 + 50, ANCHO // 3, ALTO // 2 - 50) # Edificio inferior derecho
+    zona_reparar_top_izq = pygame.Rect(0, 0, ANCHO // 3, ALTO // 2 - 50) 
+    zona_reparar_top_medio = pygame.Rect(ANCHO // 3, 0, ANCHO // 3, ALTO // 2 - 50)
+    zona_reparar_abajo_izq = pygame.Rect(0, ALTO // 2 + 50, ANCHO // 3, ALTO // 2 - 50)
+    zona_reparar_abajo_der = pygame.Rect(ANCHO * 2 // 3, ALTO // 2 + 50, ANCHO // 3, ALTO // 2 - 50)
 
-    # --- 2.1. Definir Límites de los Edificios (¡¡¡VACÍA!!!) ---
-    limites_edificios = [] # ¡Colisiones desactivadas! (Para movimiento libre)
-    
     # --- 3. Instanciar Jugador ---
     try:
         ruta_personaje = assets_dir / personaje
@@ -273,7 +279,6 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str, dificultad: st
          
     limites_pantalla = screen.get_rect().inflate(-20, -20)
     
-    # (El spawn vuelve al centro)
     spawn_pos = (ANCHO // 2, ALTO // 2) 
     jugador = Player(frames_jugador, spawn_pos, limites_pantalla, speed=300)
 
@@ -293,11 +298,12 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str, dificultad: st
     # --- 5. Funciones de Ayuda (Spawn y Reseteo) ---
     
     def spawn_tool():
-        """Crea una nueva herramienta en un lugar aleatorio."""
+        """Crea una nueva herramienta en un lugar aleatorio LEJOS del jugador."""
         nonlocal tool
         area = random.choice(SAFE_SPAWN_AREAS)
         pos = random_point_in_rect(area)
         tool = Tool(pos, img_herramienta)
+        print(f"Herramienta spawneada en: {pos}") # Debug
         
     def reset_level():
         nonlocal estado_reparacion, progreso_reparacion, reparando_actualmente, carrying_tool, tool
@@ -367,14 +373,18 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str, dificultad: st
             
             jugador.handle_input(dt) 
             
-            # --- (Colisiones de edificios desactivadas) ---
-            
-            if not carrying_tool and tool and not tool.taken:
+            # --- Lógica de Recogida de Herramienta (CORREGIDA) ---
+            # Solo se puede recoger si: 
+            # 1. La herramienta existe
+            # 2. NO ha sido tomada ya
+            # 3. El jugador NO lleva ya una herramienta
+            if tool and not tool.taken and not carrying_tool:
                 if jugador.rect.colliderect(tool.rect):
                     carrying_tool = True
                     tool.taken = True
                     jugador.carrying_image = img_herramienta
                     play_sfx("sfx_pick_seed", assets_dir)
+                    print("Herramienta recogida!") # Debug
 
             
             teclas = pygame.key.get_pressed(); zona_activa = None
@@ -424,9 +434,8 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str, dificultad: st
         elif not ti and tm and ai and ad: screen.blit(imagenes_escaladas[14], (0, 0))
         elif ti and tm and ai and ad:
             screen.blit(imagenes_escaladas[15], (0, 0))
-            if not victoria:
-                pass 
         
+        # DIBUJAR HERRAMIENTA (Si no ha sido tomada)
         if tool:
             tool.draw(screen)
         
