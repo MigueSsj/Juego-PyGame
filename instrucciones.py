@@ -1,26 +1,7 @@
+# instrucciones.py
 import pygame, math
 from pathlib import Path
-
-# ====== SFX click ======
-_click_snd = None
-def play_click(assets_dir: Path):
-    global _click_snd
-    if _click_snd is None:
-        try:
-            audio_dir = assets_dir / "msuiquita"
-            for stem in ["musica_botoncitos", "click", "boton"]:
-                for ext in (".ogg", ".wav", ".mp3"):
-                    for p in list(audio_dir.glob(f"{stem}{ext}")) + list(audio_dir.glob(f"{stem}*{ext}")):
-                        if not pygame.mixer.get_init(): pygame.mixer.init()
-                        _click_snd = pygame.mixer.Sound(str(p))
-                        _click_snd.set_volume(0.9)
-                        break
-                if _click_snd: break
-        except Exception:
-            _click_snd = None
-    if _click_snd:
-        try: _click_snd.play()
-        except Exception: pass
+from audio_shared import play_sfx  # <<< usamos el banco de SFX compartido
 
 def find_by_stem(assets_dir: Path, stem: str) -> Path | None:
     exts = (".png", ".jpg", ".jpeg")
@@ -87,7 +68,7 @@ def run(screen: pygame.Surface, assets_dir: Path) -> None:
             if event.type == pygame.QUIT:
                 return
             elif event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
-                play_click(assets_dir)
+                play_sfx("back", assets_dir)  # <<< sonido back por teclado
                 return
             elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                 clicked = True
@@ -104,7 +85,7 @@ def run(screen: pygame.Surface, assets_dir: Path) -> None:
                 r = back_img_hover.get_rect(center=back_rect.center)
                 screen.blit(back_img_hover, r)
                 if clicked:
-                    play_click(assets_dir)
+                    play_sfx("back", assets_dir)  # <<< sonido back por click
                     return
             else:
                 screen.blit(back_img, back_rect)

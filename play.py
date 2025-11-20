@@ -1,34 +1,13 @@
+# play.py
 import pygame
 from pathlib import Path
+from audio_shared import play_sfx  # <<< SFX compartidos (select/back)
 
 # --- IMPORT ROBUSTO DE dificultad ---
 try:
     import dificultad as dificultad
 except ModuleNotFoundError:
     from levels import dificultad as dificultad
-
-# ====== SFX click ======
-_click_snd: pygame.mixer.Sound | None = None
-def _find_click(assets_dir: Path) -> pygame.mixer.Sound | None:
-    global _click_snd
-    if _click_snd is not None: return _click_snd
-    try:
-        audio_dir = assets_dir / "msuiquita"
-        for stem in ["musica_botoncitos", "click", "boton"]:
-            for ext in (".ogg", ".wav", ".mp3"):
-                for p in list(audio_dir.glob(f"{stem}{ext}")) + list(audio_dir.glob(f"{stem}*{ext}")):
-                    if not pygame.mixer.get_init(): pygame.mixer.init()
-                    _click_snd = pygame.mixer.Sound(str(p))
-                    _click_snd.set_volume(0.9)
-                    return _click_snd
-    except Exception:
-        pass
-    return None
-def play_click(assets_dir: Path):
-    snd = _find_click(assets_dir)
-    if snd:
-        try: snd.play()
-        except Exception: pass
 
 def find_by_stem(assets_dir: Path, stem: str) -> Path | None:
     exts = (".png", ".jpg", ".jpeg")
@@ -58,6 +37,18 @@ def _stop_menu_music():
             pygame.mixer.music.fadeout(400)
     except Exception:
         pass
+
+# ✨ Nueva función mejorada: zoom al pasar el mouse
+def draw_card(screen, img, rect, mouse, scale_factor=1.10):
+    if rect.collidepoint(mouse):
+        zoom_w = int(rect.width * scale_factor)
+        zoom_h = int(rect.height * scale_factor)
+        zoom_img = pygame.transform.smoothscale(img, (zoom_w, zoom_h))
+        zoom_rect = zoom_img.get_rect(center=rect.center)
+        screen.blit(zoom_img, zoom_rect)
+    else:
+        screen.blit(img, rect)
+
 
 def run(screen: pygame.Surface, assets_dir: Path):
     clock = pygame.time.Clock()
@@ -96,12 +87,8 @@ def run(screen: pygame.Surface, assets_dir: Path):
     desired_w = max(120, min(int(W * 0.12), 240))
     back_img = scale_to_width(back_img, desired_w)
     back_img_hover = scale_to_width(back_img, int(back_img.get_width() * HOVER_SCALE))
-    back_rect = back_img.get_rect(); back_rect.bottomleft = (10, H - 12)
-
-    def draw_card(img, rect, mouse):
-        if rect.collidepoint(mouse):
-            pygame.draw.rect(screen, (255, 255, 255), rect.inflate(10,10), 3, border_radius=10)
-        screen.blit(img, rect)
+    back_rect = back_img.get_rect()
+    back_rect.bottomleft = (10, H - 12)
 
     while True:
         mouse = pygame.mouse.get_pos()
@@ -117,41 +104,82 @@ def run(screen: pygame.Surface, assets_dir: Path):
         screen.blit(background, (scroll_x + W, 0))
 
         screen.blit(title_img, title_rect)
-        draw_card(card1, r1, mouse); draw_card(card2, r2, mouse); draw_card(card3, r3, mouse)
 
+        # ✨ Hover zoom en las tarjetas
+        draw_card(screen, card1, r1, mouse)
+        draw_card(screen, card2, r2, mouse)
+        draw_card(screen, card3, r3, mouse)
+
+        # Hover zoom del botón regresar (ya existente)
         if back_rect.collidepoint(mouse):
             r = back_img_hover.get_rect(center=back_rect.center)
-            screen.blit(back_img_hover, r); current_back_rect = r
+            screen.blit(back_img_hover, r)
+            current_back_rect = r
         else:
-            screen.blit(back_img, back_rect); current_back_rect = back_rect
+            screen.blit(back_img, back_rect)
+            current_back_rect = back_rect
 
         if click:
+
+            def _handle_choice_for_level(lvl_num):
+                try:
+                    choice = dificultad.run(screen, assets_dir, nivel=lvl_num)
+                except Exception as e:
+                    print(f"ERROR en dificultad.run({lvl_num}):", e)
+                    import traceback; traceback.print_exc()
+                    return None
+
+                if not isinstance(choice, dict) or "dificultad" not in choice:
+                    return None
+
+                CHARACTER_FOLDER_MAP = {
+                    "EcoGuardian": "PERSONAJE H",
+                    "EcoGuardianM": "PERSONAJE M",
+                    "H": "PERSONAJE H",
+                    "M": "PERSONAJE M",
+                }
+
+                personaje_folder = None
+                if "personaje_folder" in choice:
+                    personaje_folder = choice["personaje_folder"]
+                elif "personaje" in choice:
+                    val = choice["personaje"]
+                    if isinstance(val, str) and val.upper().startswith("PERSONAJE"):
+                        personaje_folder = val
+                    else:
+                        personaje_folder = CHARACTER_FOLDER_MAP.get(val)
+                if not personaje_folder:
+                    personaje_folder = "PERSONAJE H"
+
+                return {
+                    "nivel": lvl_num,
+                    "dificultad": choice["dificultad"],
+                    "personaje": personaje_folder
+                }
+
             if r1.collidepoint(mouse):
-                play_click(assets_dir)
-                choice = dificultad.run(screen, assets_dir, nivel=1)
-                if isinstance(choice, dict) and "dificultad" in choice:
+                play_sfx("select", assets_dir)
+                result = _handle_choice_for_level(1)
+                if result:
                     _stop_menu_music()
-                    return {"nivel": 1,
-                            "dificultad": choice["dificultad"],
-                            "personaje": choice.get("personaje", "EcoGuardian")}
+                    return result
+
             elif r2.collidepoint(mouse):
-                play_click(assets_dir)
-                choice = dificultad.run(screen, assets_dir, nivel=2)
-                if isinstance(choice, dict) and "dificultad" in choice:
+                play_sfx("select", assets_dir)
+                result = _handle_choice_for_level(2)
+                if result:
                     _stop_menu_music()
-                    return {"nivel": 2,
-                            "dificultad": choice["dificultad"],
-                            "personaje": choice.get("personaje", "EcoGuardian")}
+                    return result
+
             elif r3.collidepoint(mouse):
-                play_click(assets_dir)
-                choice = dificultad.run(screen, assets_dir, nivel=3)
-                if isinstance(choice, dict) and "dificultad" in choice:
+                play_sfx("select", assets_dir)
+                result = _handle_choice_for_level(3)
+                if result:
                     _stop_menu_music()
-                    return {"nivel": 3,
-                            "dificultad": choice["dificultad"],
-                            "personaje": choice.get("personaje", "EcoGuardian")}
+                    return result
+
             elif current_back_rect.collidepoint(mouse):
-                play_click(assets_dir)
+                play_sfx("back", assets_dir)
                 return None
 
         pygame.display.flip()

@@ -2,28 +2,8 @@ from __future__ import annotations
 import pygame
 from pathlib import Path
 from typing import Optional
-import importlib, importlib.util
-
-# ====== SFX click ======
-_click_snd: pygame.mixer.Sound | None = None
-def play_click(assets_dir: Path):
-    global _click_snd
-    if _click_snd is None:
-        try:
-            audio_dir = assets_dir / "msuiquita"
-            for stem in ["musica_botoncitos", "click", "boton"]:
-                for ext in (".ogg", ".wav", ".mp3"):
-                    for p in list(audio_dir.glob(f"{stem}{ext}")) + list(audio_dir.glob(f"{stem}*{ext}")):
-                        if not pygame.mixer.get_init(): pygame.mixer.init()
-                        _click_snd = pygame.mixer.Sound(str(p))
-                        _click_snd.set_volume(0.9)
-                        break
-                if _click_snd: break
-        except Exception:
-            _click_snd = None
-    if _click_snd:
-        try: _click_snd.play()
-        except Exception: pass
+import importlib, importlib.util, re
+from audio_shared import play_sfx  # <<< usar SFX compartidos (easy/hard/back)
 
 # ===== Helpers =====
 def find_by_stem(assets_dir: Path, stem: str) -> Optional[Path]:
@@ -75,11 +55,69 @@ def _import_seleccion_clase():
 
 def _abrir_seleccion_personaje(screen: pygame.Surface, assets_dir: Path) -> Optional[str]:
     SeleccionPersonajeScreen = _import_seleccion_clase()
-    return SeleccionPersonajeScreen(screen, assets_dir).run()  # ← retorna nombre o None
+    # devuelve el nombre/label que la pantalla entrega (p.ej. "EcoGuardian (M)")
+    return SeleccionPersonajeScreen(screen, assets_dir).run()
+
+# ===== Normalizador de personaje (nuevo) =====
+def _resolve_personaje_folder(label: str) -> Optional[str]:
+    """
+    Convierte un label devuelto por la pantalla de selección en la carpeta real:
+    e.g. "EcoGuardian (M)" -> "PERSONAJE M"
+         "EcoGuardian" -> "PERSONAJE H"  (por convención si no indica M/H)
+         "H" -> "PERSONAJE H"
+         "M" -> "PERSONAJE M"
+    Devuelve None si no se pudo resolver.
+    """
+    if not isinstance(label, str):
+        return None
+    raw = label.strip()
+    if not raw:
+        return None
+
+    lower = raw.lower()
+
+    # Si ya es directamente la carpeta, devuélvela en mayúsculas
+    if lower.startswith("personaje"):
+        return raw.upper()
+
+    # Detectar indicadores explícitos de M o H dentro del label
+    # Busca patrones como "(M)" "(H)", " m ", "-M", " (m)", etc.
+    if re.search(r"\( *m *\)", lower) or re.search(r"\bM\b", raw) and not re.search(r"\bH\b", raw):
+        return "PERSONAJE M"
+    if re.search(r"\( *h *\)", lower) or re.search(r"\bH\b", raw) and not re.search(r"\bM\b", raw):
+        return "PERSONAJE H"
+
+    # Normalizar quitando caracteres no alfanuméricos y paréntesis
+    key = re.sub(r"[^\w]", "", lower)
+
+    # Mapeo sencillo de claves conocidas
+    MAP = {
+        "ecoguardian": "PERSONAJE H",
+        "ecoguardianm": "PERSONAJE M",
+        "ecoguardianh": "PERSONAJE H",
+        "guardian": "PERSONAJE H",
+        "guardianm": "PERSONAJE M",
+        "h": "PERSONAJE H",
+        "m": "PERSONAJE M",
+        "male": "PERSONAJE M",
+        "female": "PERSONAJE H",
+    }
+
+    if key in MAP:
+        return MAP[key]
+
+    # heurística final: si contiene "m" como sufijo o dentro de paréntesis, toma M
+    if key.endswith("m"):
+        return "PERSONAJE M"
+    if key.endswith("h"):
+        return "PERSONAJE H"
+
+    # no se resolvió
+    return None
 
 # ===== Pantalla Dificultad =====
 def run(screen: pygame.Surface, assets_dir: Path, nivel: int = 1, *args, **kwargs):
-    """Devuelve {'dificultad': 'facil'|'dificil', 'personaje': <str>} o None si Back."""
+    """Devuelve {'dificultad': 'facil'|'dificil', 'personaje': <label original>, 'personaje_folder': <carpeta>} o None si Back."""
     clock = pygame.time.Clock()
     W, H = screen.get_size()
 
@@ -90,16 +128,56 @@ def run(screen: pygame.Surface, assets_dir: Path, nivel: int = 1, *args, **kwarg
     bw = background.get_width()
     scroll_x = 0; SCROLL_SPEED = 2
 
-    title_img = load_image(assets_dir, [f"elige_dificultad_nivel{nivel}", "elige_dificultad", "title_dificultad"])
+    # ===================================================================
+    # === CAMBIO: Cargar el TÍTULO específico del nivel ===
+    # ===================================================================
+    title_img = None
+    if nivel == 2:
+        # Nombres que me sugeriste + nombre de archivo que subiste
+        title_img = load_image(assets_dir, ["title_dificultad_2", "WhatsApp_Image_2025-11-08_at_7.58.00_PM-removebg-preview"])
+    elif nivel == 3:
+        # Nombres que me sugeriste + nombre de archivo que subiste
+        title_img = load_image(assets_dir, ["title_dificultad_3", "WhatsApp_Image_2025-11-08_at_7.58.45_PM-removebg-preview"])
+
+    # Si no es 2 o 3, or si falló la carga, usa el método anterior
+    if title_img is None:
+        title_img = load_image(assets_dir, [f"elige_dificultad_nivel{nivel}", "elige_dificultad", "title_dificultad"])
+    # ===================================================================
+    
     if title_img:
-        title_img = scale_to_width(title_img, int(W * 0.38))
+        # === CAMBIO: Título más chico (era 0.38) ===
+        title_img = scale_to_width(title_img, int(W * 0.30))
     else:
+        # Fallback final a texto si todo lo demás falla
         font_title = pygame.font.SysFont("arial", 48, bold=True)
         title_img = font_title.render(f"Elige dificultad - Nivel {nivel}", True, (255, 255, 255))
-    title_rect = title_img.get_rect(center=(W // 2, int(H * 0.18)))
+    
+    # === CAMBIO: Título más abajo (era 0.18) ===
+    title_rect = title_img.get_rect(center=(W // 2, int(H * 0.22)))
 
-    btn_normal_img  = load_image(assets_dir, ["btn_normal", "normal", "btn_facil", "facil"])
-    btn_dificil_img = load_image(assets_dir, ["btn_dificil", "dificil"])
+    # ===================================================================
+    # === CAMBIO: Cargar imágenes de dificultad según el nivel ===
+    # (Este código ya lo tenías y está perfecto)
+    # ===================================================================
+    if nivel == 2:
+        # Nivel 2 usa las nuevas imágenes
+        print("DEBUG: Cargando imágenes de dificultad para Nivel 2")
+        btn_normal_img  = load_image(assets_dir, ["btn_facil2", "IMAGEN DE PRINCIPIANTE NIVEL 2 EN ESPAÑOL"])
+        btn_dificil_img = load_image(assets_dir, ["btn_dificil2", "IMAGEN DE AVANZADO NIVEL 2 EN ESPAÑOL"])
+    
+    elif nivel == 3:
+        # Nivel 3 usa sus propias imágenes
+        print("DEBUG: Cargando imágenes de dificultad para Nivel 3")
+        btn_normal_img  = load_image(assets_dir, ["btn_facil3"])
+        btn_dificil_img = load_image(assets_dir, ["btn_dificil3", "IMAGEN DE AVANZADO NIVEL 2 EN ESPAÑOL"]) # Re-usa la difícil del Nivel 2
+    
+    else:
+        # Nivel 1 (y cualquier otro no definido) usa las imágenes por defecto
+        print("DEBUG: Cargando imágenes de dificultad para Nivel 1 (default)")
+        btn_normal_img  = load_image(assets_dir, ["btn_normal", "normal", "btn_facil", "facil"])
+        btn_dificil_img = load_image(assets_dir, ["btn_dificil", "dificil"])
+    # ===================================================================
+
     target_w = int(W * 0.26); gap = int(W * 0.06); HOVER_SCALE = 1.08
 
     def prepare_button(img: pygame.Surface | None, txt: str):
@@ -157,21 +235,35 @@ def run(screen: pygame.Surface, assets_dir: Path, nivel: int = 1, *args, **kwarg
 
         if click:
             if rN.collidepoint(mouse):
-                play_click(assets_dir)
+                play_sfx("easy", assets_dir)   # <<< sonido Fácil
                 nombre = _abrir_seleccion_personaje(screen, assets_dir)
                 if nombre is None:  # cancelado
                     return None
-                return {"dificultad": "facil", "personaje": nombre}
+
+                # normalizar personaje a carpeta
+                carpeta = _resolve_personaje_folder(nombre)
+                if carpeta is None:
+                    # fallback por si no se pudo resolver: asumimos PERSONAJE H
+                    print(f"WARN: no se pudo resolver carpeta de personaje para '{nombre}', usando 'PERSONAJE H' por defecto.")
+                    carpeta = "PERSONAJE H"
+
+                return {"dificultad": "facil", "personaje": nombre, "personaje_folder": carpeta}
 
             if rD.collidepoint(mouse):
-                play_click(assets_dir)
+                play_sfx("hard", assets_dir)   # <<< sonido Difícil
                 nombre = _abrir_seleccion_personaje(screen, assets_dir)
                 if nombre is None:
                     return None
-                return {"dificultad": "dificil", "personaje": nombre}
+
+                carpeta = _resolve_personaje_folder(nombre)
+                if carpeta is None:
+                    print(f"WARN: no se pudo resolver carpeta de personaje para '{nombre}', usando 'PERSONAJE H' por defecto.")
+                    carpeta = "PERSONAJE H"
+
+                return {"dificultad": "dificil", "personaje": nombre, "personaje_folder": carpeta}
 
             if current_back_rect.collidepoint(mouse):
-                play_click(assets_dir)
+                play_sfx("back", assets_dir)   # <<< sonido Back
                 return None
 
         pygame.display.flip()
