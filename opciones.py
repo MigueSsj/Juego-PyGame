@@ -1,6 +1,6 @@
 from pathlib import Path
 import pygame
-import config  # <--- 1. IMPORTAR CONFIGURACIÓN
+import config # <--- 1. IMPORTAR CONFIGURACIÓN
 from audio_shared import (
     load_master_volume,
     set_music_volume_now,
@@ -8,7 +8,6 @@ from audio_shared import (
     play_click,
     set_sfx_volume_now,
 )
-
 # =========================
 # Helpers mínimos locales
 # =========================
@@ -27,22 +26,22 @@ def find_by_stem(assets_dir: Path, stem: str):
 def load_image(assets_dir: Path, stems: list[str]) -> pygame.Surface:
     """Carga la primera coincidencia de stems y hace convert/convert_alpha."""
     
-    # === CAMBIO: INTERCEPTAR PARA TRADUCCIÓN ===
-    # Si hay stems, revisamos si el primero tiene traducción en config
+    # === MEJORA: TRADUCCIÓN Y FALLBACK ROBUSTO ===
+    candidates = []
     if stems:
         key = stems[0]
-        # Preguntamos al config cual es el nombre real del archivo
+        # 1. Agregar el nombre traducido (real_name) como primera opción
         real_name = config.obtener_nombre(key)
+        candidates.append(real_name)
         
-        # Si el nombre traducido es diferente, intentamos cargarlo primero
-        if real_name != key:
-            p = find_by_stem(assets_dir, real_name)
-            if p:
-                img = pygame.image.load(str(p))
-                return img.convert_alpha() if p.suffix.lower()==".png" else img.convert()
-    # ===========================================
-
-    for stem in stems:
+        # 2. Agregar los stems originales como opciones de fallback
+        for stem in stems:
+            if stem not in candidates:
+                candidates.append(stem)
+        
+        
+    # Usamos la lista de candidatos que ahora incluye la traducción y los fallbacks
+    for stem in candidates:
         p = find_by_stem(assets_dir, stem)
         if p:
             img = pygame.image.load(str(p))
@@ -237,13 +236,13 @@ def run(screen: pygame.Surface, assets_dir: Path):
         # Cargamos usando las claves de config.py
         # Si estás en inglés, load_image buscará "titulo_opcionesus.png" automáticamente
         tm = load_image(assets_dir, ["titulo_opciones", "opciones_titulo"])
-        tv = load_image(assets_dir, ["titulo_volumen", "volumen_titulo"])
+        tv = load_image(assets_dir, ["titulo_volume", "volumen_titulo"]) # Usamos 'titulo_volume' como stem principal
         tl = load_image(assets_dir, ["titulo_idioma", "idioma_titulo"])
         bk = load_image(assets_dir, ["btn_back", "regresar", "btn_regresar", "back"])
 
         # Escalamos (lógica original)
         title_main_img = scale_to_width(tm, int(W * 0.45))
-        title_vol_img  = scale_to_width(tv, int(W * 0.25))
+        title_vol_img = scale_to_width(tv, int(W * 0.25))
         title_lang_img = scale_to_width(tl, int(W * 0.25))
 
         back_img = scale_to_width(bk, desired_w)

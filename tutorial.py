@@ -1,205 +1,175 @@
 from __future__ import annotations
-import pygame, math, re
+import pygame, math, random, re
 from pathlib import Path
-from typing import Optional, List
+from typing import Optional, List, Tuple, Dict, Any
 
-# === Importar funciones de música (si existen) ===
+# ======================================================================
+# === FUNCIONES BÁSICAS Y CLASES (Completas y tomadas de tus niveles)
+# ======================================================================
+
+# --- Importar música (con fallback) ---
 try:
-    from audio_shared import play_sfx, start_level_music, stop_level_music
+    from audio_shared import play_sfx, start_level_music, start_suspense_music, stop_level_music
 except ImportError:
     def play_sfx(*args, **kwargs): pass
     def start_level_music(assets_dir: Path): pass
+    def start_suspense_music(assets_dir: Path): pass
     def stop_level_music(): pass
 
-# ==========================================
-# === FUNCIONES DE CARGA ===
-# ==========================================
+# --- Constantes para Nivel 3 (Tutorial) ---
+TIEMPO_PARA_REPARAR_TUTORIAL = 1 
+
+# === FUNCIONES DE AYUDA (Sin cambios) ===
 def find_by_stem(assets_dir: Path, stem: str) -> Optional[Path]:
     exts = (".png", ".jpg", ".jpeg")
     for ext in exts:
         p = assets_dir / f"{stem}{ext}"
-        if p.exists(): return p
+        if p.exists():
+            return p
     cands = []
     for ext in exts:
         cands += list(assets_dir.glob(f"{stem}*{ext}"))
     return min(cands, key=lambda p: len(p.name)) if cands else None
 
-def load_image(assets_dir: Path, stems: List[str], fallback_color=(100,100,100)) -> pygame.Surface:
+def load_image(assets_dir: Path, stems: List[str]) -> Optional[pygame.Surface]:
     for stem in stems:
         p = find_by_stem(assets_dir, stem)
         if p:
-            try:
-                img = pygame.image.load(str(p))
-                return img.convert_alpha() if p.suffix.lower()==".png" else img.convert()
-            except Exception:
-                pass
-    s = pygame.Surface((64, 64), pygame.SRCALPHA)
-    pygame.draw.circle(s, fallback_color, (32,32), 30)
-    return s
+            img = pygame.image.load(str(p))
+            return img.convert_alpha() if p.suffix.lower()==".png" else img.convert()
+    return None
+
+def load_surface(p: Path) -> pygame.Surface:
+    img = pygame.image.load(str(p))
+    return img.convert_alpha() if p.suffix.lower() == ".png" else img.convert()
 
 def scale_to_width(img: pygame.Surface, new_w: int) -> pygame.Surface:
-    if img.get_width() == 0: return img
+    if img.get_width() == 0: return pygame.Surface((new_w, new_w), pygame.SRCALPHA)
     r = new_w / img.get_width()
     return pygame.transform.smoothscale(img, (new_w, int(img.get_height() * r)))
 
-# ==========================================
-# === CLASES DEL JUEGO ===
-# ==========================================
+def make_glow(radius: int, color=(255, 255, 120)) -> pygame.Surface:
+    s = pygame.Surface((radius * 2, radius * 2), pygame.SRCALPHA)
+    for rr in range(radius, 0, -1):
+        a = max(5, int(180 * (rr / radius) ** 2))
+        pygame.draw.circle(s, (*color, a), (radius, radius), rr)
+    return s
 
-class TutorialItem(pygame.sprite.Sprite):
-    def __init__(self, x, y, img, kind):
-        super().__init__()
-        self.image = img
-        self.rect = self.image.get_rect(center=(x, y))
-        self.start_pos = (x, y)
-        self.kind = kind
-        self.carried = False
-        self.completed = False
-        # Glow más grande
-        self.glow = pygame.Surface((self.rect.width + 60, self.rect.height + 60), pygame.SRCALPHA)
-        pygame.draw.circle(self.glow, (255, 255, 150, 100), (self.glow.get_width()//2, self.glow.get_height()//2), self.glow.get_width()//2)
+def _carry_anchor(player: pygame.sprite.Sprite, carrying_rect: pygame.Rect) -> tuple[int, int]:
+    rect = player.rect
+    cx, cy = rect.centerx, rect.centery
+    cy = rect.centery + int(rect.height * 0.22)
+    d = getattr(player, "dir", "down")
+    if d == "left":
+        cx -= int(rect.width * 0.12); cy += int(rect.height * 0.02)
+    elif d == "right":
+        cx += int(rect.width * 0.12); cy += int(rect.height * 0.02)
+    elif d == "up":
+        cy += int(rect.height * 0.06)
+    else:
+        cy += int(rect.height * 0.04)
+    return cx, cy
 
-    def reset(self):
-        self.rect.center = self.start_pos
-        self.carried = False
-        self.completed = False
-
-    def draw(self, screen, t):
-        if not self.completed:
-            if not self.carried:
-                off = math.sin(t * 5) * 5
-                r = self.rect.copy()
-                r.y += int(off)
-                screen.blit(self.glow, self.glow.get_rect(center=r.center))
-                screen.blit(self.image, r)
-            else:
-                screen.blit(self.image, self.rect)
-
-class TutorialTarget(pygame.sprite.Sprite):
-    def __init__(self, x, y, img_normal, img_done, kind, align_bottom=False):
-        super().__init__()
-        self.image_normal = img_normal
-        self.image_done = img_done
-        self.image = self.image_normal
-        
-        # Definir posición inicial
-        self.rect = self.image.get_rect()
-        if align_bottom:
-            self.rect.midbottom = (x, y) # Usar el punto inferior para alinear suelo
-        else:
-            self.rect.center = (x, y)
-            
-        self.kind = kind
-        self.done = False
-        
-        # Guardar puntos de referencia para mantener posición al cambiar imagen
-        self.pos_center = self.rect.center
-        self.pos_midbottom = self.rect.midbottom 
-        self.align_bottom = align_bottom
-
-    def complete(self):
-        self.done = True
-        self.image = self.image_done
-        # Recalcular rect mantieniendo la posición correcta
-        if self.align_bottom:
-            self.rect = self.image.get_rect(midbottom=self.pos_midbottom)
-        else:
-            self.rect = self.image.get_rect(center=self.pos_center)
-
-# ==========================================
-# === JUGADOR ===
-# ==========================================
-def load_char_frames(assets_dir: Path, target_h: int, *, char_folder: str = "PERSONAJE H") -> dict[str, list[pygame.Surface] | pygame.Surface]:
-    char_dir = assets_dir / char_folder
-    if not char_dir.exists():
-        alt = "PERSONAJE M" if "H" in char_folder else "PERSONAJE H"
-        if (assets_dir / alt).exists(): char_dir = assets_dir / alt
+# === LÓGICA DE DIBUJO DE TECLAS (Sin cambios) ===
+def draw_key_icon(surf: pygame.Surface, key_char: str, pos: Tuple[int, int], size: int, color: Tuple[int, int, int] = (255, 255, 255)):
+    key_surf = pygame.Surface((size, size), pygame.SRCALPHA)
+    pygame.draw.rect(key_surf, (30, 30, 30), key_surf.get_rect(), border_radius=4)
+    pygame.draw.rect(key_surf, (150, 150, 150), key_surf.get_rect(), 1, border_radius=4)
     
-    prefix = "womanguardian" if "M" in char_folder.upper() or "WOMAN" in char_folder.upper() else "ecoguardian"
+    key_font = pygame.font.SysFont("arial", int(size * 0.7), bold=True)
+    text = key_font.render(key_char.upper(), True, color)
+    text_rect = text.get_rect(center=(size // 2, size // 2))
+    key_surf.blit(text, text_rect)
+    
+    surf.blit(key_surf, key_surf.get_rect(center=pos))
 
-    def _load_seq(name: str) -> list[pygame.Surface]:
-        files = []
-        for ext in (".png", ".jpg", ".jpeg"):
-            files += list(char_dir.glob(f"{prefix}_{name}_[0-9]*{ext}"))
-        def _num(p: Path) -> int:
-            m = re.search(r"_(\d+)\.\w+$", p.name)
-            return int(m.group(1)) if m else 0
-        files.sort(key=_num)
-        seq: list[pygame.Surface] = []
-        for p in files:
-            img = pygame.image.load(str(p))
-            seq.append(img.convert_alpha() if p.suffix.lower()==".png" else img.convert())
-        return seq
+def draw_movement_hud(surf: pygame.Surface, center_x: int, center_y: int, key_size: int, font: pygame.font.Font):
+    KEY_S = key_size
+    GAP = KEY_S + 5
+    
+    title_text = font.render("MOVERSE:", True, (255, 255, 255))
+    surf.blit(title_text, title_text.get_rect(midbottom=(center_x + GAP*1.75, center_y - KEY_S * 1.5)))
 
-    def _load_idle(name: str) -> Optional[pygame.Surface]:
-        for ext in (".png", ".jpg", ".jpeg"):
-            p = char_dir / f"{prefix}_{name}{ext}"
-            if p.exists():
-                img = pygame.image.load(str(p))
-                return img.convert_alpha() if p.suffix.lower()==".png" else img.convert()
-        return None
+    draw_key_icon(surf, "W", (center_x, center_y - GAP), KEY_S)
+    draw_key_icon(surf, "A", (center_x - GAP, center_y), KEY_S)
+    draw_key_icon(surf, "S", (center_x, center_y), KEY_S)
+    draw_key_icon(surf, "D", (center_x + GAP, center_y), KEY_S)
+    
+    ARROW_GAP_X = GAP * 3.5
+    draw_key_icon(surf, "▲", (center_x + ARROW_GAP_X, center_y - GAP), KEY_S, (100, 200, 255))
+    draw_key_icon(surf, "◀", (center_x + ARROW_GAP_X - GAP, center_y), KEY_S, (100, 200, 255))
+    draw_key_icon(surf, "▼", (center_x + ARROW_GAP_X, center_y), KEY_S, (100, 200, 255))
+    draw_key_icon(surf, "▶", (center_x + ARROW_GAP_X + GAP, center_y), KEY_S, (100, 200, 255))
 
-    right = _load_seq("walk_right"); left  = _load_seq("walk_left")
-    down  = _load_seq("walk_down");  up    = _load_seq("walk_up")
-    idle_right = _load_idle("right_idle"); idle_left  = _load_idle("left_idle")
-    idle_down  = _load_idle("down_idle");  idle_up    = _load_idle("up_idle")
 
-    if right and not left: left = [pygame.transform.flip(f, True, False) for f in right]
-    if left and not right: right = [pygame.transform.flip(f, True, False) for f in left]
-    if not down: down = right[:1] if right else []
-    if not up:   up   = right[:1] if right else []
+# === CLASES DE OBJETOS (Sin cambios) ===
 
-    if idle_right is None and right: idle_right = right[0]
-    if idle_left  is None and idle_right is not None: idle_left = pygame.transform.flip(idle_right, True, False)
-    if idle_down  is None and down:  idle_down = down[0]
-    if idle_up    is None and up:    idle_up   = up[0]
+class Trash(pygame.sprite.Sprite):
+    def __init__(self, img: pygame.Surface, pos, scale_w: int):
+        super().__init__()
+        self.image = scale_to_width(img, scale_w)
+        self.rect = self.image.get_rect(center=pos)
+        self.glow = make_glow(int(max(self.rect.width, self.rect.height) * 0.9))
+        self.carried = False
+        self.phase = random.uniform(0, math.tau)
+        self.is_delivered = False 
+    def draw(self, surface: pygame.Surface, t: float):
+        if not self.carried:
+            pul = (math.sin(t + self.phase) + 1) * 0.5
+            a = int(70 + 100 * pul)
+            g = self.glow.copy()
+            g.fill((255, 255, 255, a), special_flags=pygame.BLEND_RGBA_MULT)
+            surface.blit(g, g.get_rect(center=self.rect.center))
+        surface.blit(self.image, self.rect)
 
-    def _scale(f: pygame.Surface) -> pygame.Surface:
-        if f.get_height() == 0: return pygame.Surface((int(target_h*0.7), target_h), pygame.SRCALPHA)
-        h = target_h
-        w = int(f.get_width() * (h / f.get_height()))
-        return pygame.transform.smoothscale(f, (w, h))
+class Seed:
+    def __init__(self, pos: Tuple[int,int], img: pygame.Surface):
+        self.image = img
+        self.rect = img.get_rect(center=pos)
+        self.taken = False
+        self.is_carried = False
+    def draw(self, surf: pygame.Surface):
+        if not self.taken: surf.blit(self.image, self.rect)
 
-    def _normalize_list(seq: list[pygame.Surface]) -> list[pygame.Surface]:
-        if not seq: return seq
-        max_w = max(f.get_width() for f in seq)
-        H = seq[0].get_height()
-        out = []
-        for f in seq:
-            c = pygame.Surface((max_w, H), pygame.SRCALPHA)
-            rect = f.get_rect(midbottom=(max_w//2, H))
-            c.blit(f, rect)
-            out.append(c)
-        return out
+class Hole:
+    def __init__(self, pos: Tuple[int,int], img: pygame.Surface, assets_dir: Path):
+        self.base_img = img
+        self.rect = img.get_rect(center=pos)
+        self.has_tree = False
+        self.grow_timer = 0
+        self.grow_step = 0
+        self.glow = make_glow(int(max(self.rect.width, self.rect.height) * 0.8), color=(100, 255, 100))
+        self.assets_dir = assets_dir
+    
+    def start_grow(self): self.grow_step, self.grow_timer = 1, 1
+    def update(self, dt: int):
+        if self.grow_timer > 0 and not self.has_tree:
+            self.grow_timer += dt
+            if self.grow_timer >= 1200: 
+                self.grow_timer = 0
+                self.has_tree = True
+                play_sfx("sfx_grow", self.assets_dir)
+    
+    def draw(self, surf: pygame.Surface, arbol_img: pygame.Surface, show_glow: bool, t: float):
+        if show_glow and not self.has_tree and self.grow_timer == 0:
+            pul = (math.sin(t * 6.0) + 1) * 0.5
+            a = int(100 + 100 * pul)
+            g = self.glow.copy()
+            g.fill((100, 255, 100, a), special_flags=pygame.BLEND_RGBA_MULT)
+            surf.blit(g, g.get_rect(center=self.rect.center))
 
-    def _normalize_single(s: pygame.Surface | None) -> pygame.Surface | None:
-        if s is None:
-             h = target_h
-             w = int(h * 0.7)
-             return pygame.Surface((w, h), pygame.SRCALPHA)
-        S = _scale(s)
-        c = pygame.Surface((S.get_width(), S.get_height()), pygame.SRCALPHA)
-        c.blit(S, S.get_rect(midbottom=(c.get_width()//2, c.get_height())))
-        return c
+        if not self.has_tree and self.grow_timer == 0:
+            surf.blit(self.base_img, self.rect)
+        elif self.has_tree:
+            cx, cy = self.rect.center
+            offset_y = int(self.rect.height * 0.43) 
+            tree_midbottom_y = cy + offset_y 
+            surf.blit(arbol_img, arbol_img.get_rect(midbottom=(cx, tree_midbottom_y)))
 
-    right = _normalize_list([_scale(f) for f in right])
-    left  = _normalize_list([_scale(f) for f in left])
-    down  = _normalize_list([_scale(f) for f in down])
-    up    = _normalize_list([_scale(f) for f in up])
-
-    idle_right = _normalize_single(idle_right)
-    idle_left  = _normalize_single(idle_left)
-    idle_down  = _normalize_single(idle_down)
-    idle_up    = _normalize_single(idle_up)
-
-    return {
-        "right": right, "left": left, "down": down, "up": up,
-        "idle_right": idle_right, "idle_left": idle_left,
-        "idle_down": idle_down, "idle_up": idle_up
-    }
-
+# CLASE PLAYER (Con corrección de movimiento FINAL)
 class Player(pygame.sprite.Sprite):
-    def __init__(self, frames, pos, bounds, speed=300, anim_fps=8.0):
+    def __init__(self, frames: dict[str, list[pygame.Surface] | pygame.Surface],
+                 pos, bounds: pygame.Rect, speed: float = 320, anim_fps: float = 8.0):
         super().__init__()
         self.frames = frames
         self.dir = "down"
@@ -208,17 +178,19 @@ class Player(pygame.sprite.Sprite):
         self.anim_dt = 1.0 / max(1.0, anim_fps)
         
         idle = self.frames.get("idle_down")
-        if isinstance(idle, pygame.Surface): start_img = idle
-        elif self.frames.get("down"): start_img = self.frames["down"][0]
-        else: start_img = pygame.Surface((40,60), pygame.SRCALPHA)
+        if idle:
+            self.image = idle if isinstance(idle, pygame.Surface) else idle[0]
+        elif self.frames.get("down"):
+            self.image = self.frames["down"][0]
+        else:
+            self.image = pygame.Surface((40,60), pygame.SRCALPHA); pygame.draw.rect(self.image, (0,200,0), self.image.get_rect(), 2)
             
-        self.image = start_img 
         self.rect = self.image.get_rect(center=pos)
         self.speed = speed
         self.bounds = bounds
-        self.carrying_item = None
-
-    def handle_input(self, dt):
+        self.carrying_image: Optional[pygame.Surface] = None
+    
+    def handle_input(self, dt: float):
         k = pygame.key.get_pressed()
         dx = (k[pygame.K_d] or k[pygame.K_RIGHT]) - (k[pygame.K_a] or k[pygame.K_LEFT])
         dy = (k[pygame.K_s] or k[pygame.K_DOWN])  - (k[pygame.K_w] or k[pygame.K_UP])
@@ -226,8 +198,12 @@ class Player(pygame.sprite.Sprite):
 
         if moving:
             l = math.hypot(dx, dy);  dx, dy = dx / l, dy / l
-            if abs(dx) >= abs(dy): self.dir = "left" if dx > 0 else "right"
-            else: self.dir = "down" if dy > 0 else "up"
+            
+            # CORRECCIÓN FINAL: Asignación invertida (derecha < 0) para que coincida con tus assets
+            if abs(dx) >= abs(dy): 
+                self.dir = "left" if dx > 0 else "right" # Si va a la derecha (dx>0), usa el frame 'left'.
+            else: 
+                self.dir = "down" if dy > 0 else "up"
             
             self.rect.x += int(dx * self.speed * dt)
             self.rect.y += int(dy * self.speed * dt)
@@ -236,220 +212,488 @@ class Player(pygame.sprite.Sprite):
             self.anim_timer += dt
             if self.anim_timer >= self.anim_dt:
                 self.anim_timer -= self.anim_dt
-                seq = self.frames.get(self.dir, []) 
+                seq: list[pygame.Surface] = self.frames.get(self.dir, []) 
                 if seq: self.frame_idx = (self.frame_idx + 1) % len(seq)
-            seq = self.frames.get(self.dir, []) 
+            
+            seq: list[pygame.Surface] = self.frames.get(self.dir, []) 
             if seq: self.image = seq[self.frame_idx % len(seq)]
         else:
-            ik = f"idle_{self.dir}"
-            img = self.frames.get(ik)
-            if isinstance(img, pygame.Surface):
-                self.image = img
-            elif self.frames.get(self.dir):
-                self.image = self.frames[self.dir][0]
+            idle_key = f"idle_{self.dir}"
+            idle_img = self.frames.get(idle_key)
+            if isinstance(idle_img, pygame.Surface): self.image = idle_img
+            else:
+                seq: list[pygame.Surface] = self.frames.get(self.dir, []) 
+                self.image = seq[0] if seq else self.image
             self.frame_idx = 0
         
         new_midbottom = self.rect.midbottom
         self.rect = self.image.get_rect(midbottom=new_midbottom)
         self.rect.clamp_ip(self.bounds)
+    
+    def _get_carry_anchor(self) -> tuple[int, int]:
+        rect = self.rect
+        cx, cy = rect.centerx, rect.centery
+        cy = rect.centery + int(rect.height * 0.22)
         
-        if self.carrying_item:
-            self.carrying_item.rect.center = (self.rect.centerx, self.rect.centery - 60)
+        if self.dir == "left": cx -= int(rect.width * 0.12); cy += int(rect.height * 0.02)
+        elif self.dir == "right": cx += int(rect.width * 0.12); cy += int(rect.height * 0.02)
+        elif self.dir == "up": cy += int(rect.height * 0.06)
+        else: cy += int(rect.height * 0.04)
+        return cx, cy
 
-    def draw(self, screen):
-        screen.blit(self.image, self.rect)
+    def draw(self, surf: pygame.Surface):
+        surf.blit(self.image, self.rect)
+        if self.carrying_image:
+            cx, cy = self._get_carry_anchor()
+            anchor_rect = self.carrying_image.get_rect(center=(cx, cy))
+            surf.blit(self.carrying_image, anchor_rect)
 
-# ==========================================
-# === FUNCIÓN PRINCIPAL DEL TUTORIAL ===
-# ==========================================
-def run(screen: pygame.Surface, assets_dir: Path, personaje: str = "EcoGuardian"):
+
+# Función de carga de frames de personaje (Sin cambios)
+def load_char_frames(assets_dir: Path, target_h: int, *, char_folder: str = "PERSONAJE H") -> dict[str, list[pygame.Surface] | pygame.Surface]:
+    char_dir = assets_dir / char_folder
+    
+    if not char_dir.exists():
+        fallback_surf = pygame.Surface((int(target_h * 0.7), target_h), pygame.SRCALPHA)
+        pygame.draw.rect(fallback_surf, (0, 150, 0), fallback_surf.get_rect(), 2) 
+        return {
+            "right": [fallback_surf], "left": [pygame.transform.flip(fallback_surf, True, False)], 
+            "down": [fallback_surf], "up": [fallback_surf],
+            "idle_right": fallback_surf, "idle_left": pygame.transform.flip(fallback_surf, True, False),
+            "idle_down": fallback_surf, "idle_up": fallback_surf
+        }
+
+    prefix = "womanguardian" if "M" in char_folder.upper() else "ecoguardian"
+
+    def _load_seq(name: str) -> list[pygame.Surface]:
+        files: list[Path] = []
+        for ext in (".png", ".jpg", ".jpeg"):
+            files += list(char_dir.glob(f"{prefix}_{name}_[0-9]*{ext}"))
+        files.sort(key=lambda p: int(re.search(r"_(\d+)\.\w+$", p.name).group(1)) if re.search(r"_(\d+)\.\w+$", p.name) else 0)
+        seq: list[pygame.Surface] = [load_surface(p) for p in files]
+        return seq
+    
+    def _scale_and_pad(img: pygame.Surface) -> pygame.Surface:
+        if img.get_height() == 0: return pygame.Surface((int(target_h * 0.7), target_h), pygame.SRCALPHA)
+        current_w, current_h = img.get_size()
+        scale_ratio = target_h / current_h
+        scaled_w = int(current_w * scale_ratio)
+        scaled_img = pygame.transform.smoothscale(img, (scaled_w, target_h))
+        standard_w = int(target_h * 0.7)
+        final_surf = pygame.Surface((standard_w, target_h), pygame.SRCALPHA)
+        x_offset = (standard_w - scaled_w) // 2
+        final_surf.blit(scaled_img, (x_offset, 0))
+        return final_surf
+
+    frames_dict: Dict[str, Any] = {}
+    
+    walk_down_seq = [_scale_and_pad(f) for f in _load_seq("walk_down")]
+    walk_up_seq = [_scale_and_pad(f) for f in _load_seq("walk_up")]
+    walk_left_seq = [_scale_and_pad(f) for f in _load_seq("walk_left")]
+    walk_right_seq = [_scale_and_pad(f) for f in _load_seq("walk_right")]
+
+    if not walk_down_seq: walk_down_seq = [pygame.Surface((int(target_h * 0.7), target_h), pygame.SRCALPHA)]
+    if not walk_up_seq: walk_up_seq = [walk_down_seq[0]]
+    if not walk_left_seq: walk_left_seq = [pygame.transform.flip(walk_right_seq[0], True, False) if walk_right_seq else walk_down_seq[0]]
+    if not walk_right_seq: walk_right_seq = [pygame.transform.flip(walk_left_seq[0], True, False) if walk_left_seq else walk_down_seq[0]]
+
+
+    frames_dict["down"] = walk_down_seq
+    frames_dict["up"] = walk_up_seq
+    frames_dict["left"] = walk_left_seq
+    frames_dict["right"] = walk_right_seq
+
+    frames_dict["idle_down"] = _scale_and_pad(load_image(char_dir, [f"{prefix}_idle_down"]) or walk_down_seq[0])
+    frames_dict["idle_up"] = _scale_and_pad(load_image(char_dir, [f"{prefix}_idle_up"]) or walk_up_seq[0])
+    frames_dict["idle_left"] = _scale_and_pad(load_image(char_dir, [f"{prefix}_idle_left"]) or walk_left_seq[0])
+    frames_dict["idle_right"] = _scale_and_pad(load_image(char_dir, [f"{prefix}_idle_right"]) or walk_right_seq[0])
+    
+    return frames_dict
+
+def load_bg_fit(assets_dir: Path, W: int, H: int, stems: List[str]) -> tuple[pygame.Surface, pygame.Rect]:
+    p = find_by_stem(assets_dir, stems[0])
+    if p:
+        img = load_surface(p)
+    else:
+        found_img = False
+        for stem in stems:
+            temp_p = find_by_stem(assets_dir, stem)
+            if temp_p:
+                img = load_surface(temp_p)
+                found_img = True
+                break
+        
+        if not found_img:
+            if stems[0] == "nivel1_parque": img = pygame.Surface((W, H)); img.fill((40, 120, 40)) 
+            elif "nivel2_calle" in stems or "n2_fondo_calle" in stems: img = pygame.Surface((W, H)); img.fill((60, 60, 60)) 
+            elif "nivel3_plaza" in stems or "plaza_central" in stems or "original" in stems: img = pygame.Surface((W, H)); img.fill((100, 100, 100))
+            else: img = pygame.Surface((W, H)); img.fill((100, 100, 100))
+
+    iw, ih = img.get_size()
+    ratio = min(W / iw, H / ih) if iw and ih else 1.0
+    new_w, new_h = int(iw * ratio), int(ih * ratio)
+    scaled = pygame.transform.smoothscale(img, (new_w, new_h))
+    rect = scaled.get_rect(center=(W // 2, H // 2))
+    return scaled, rect
+
+
+# (FIN DE PARTE 1)
+# (INICIO DE PARTE 2)
+
+# ======================================================================
+# === FUNCIÓN PRINCIPAL DEL TUTORIAL (FLUJO DE FASES)
+# ======================================================================
+
+# --- COLORES ---
+BLANCO = (255, 255, 255); GRIS = (100, 100, 100); VERDE = (0, 200, 0)
+ROJO_OSCURO = (100, 0, 0)
+
+def run(screen: pygame.Surface, assets_dir: Path, personaje: str = "EcoGuardian", dificultad: str = "Fácil"):
+    pygame.font.init()
     clock = pygame.time.Clock()
     W, H = screen.get_size()
     
-    pygame.font.init()
-    font_hud = pygame.font.SysFont("arial", 26, bold=True)
+    # --- Fuentes ---
+    font = pygame.font.SysFont("arial", 26, bold=True)
+    small_font = pygame.font.SysFont("arial", 20, bold=True)
     
-    pixel_font_path = find_by_stem(assets_dir, "pixel") or find_by_stem(assets_dir, "press_start")
-    if pixel_font_path:
-        font_label = pygame.font.Font(str(pixel_font_path), 20)
-        font_e = pygame.font.Font(str(pixel_font_path), 30)
-    else:
-        font_label = pygame.font.SysFont("arial", 24, bold=True)
-        font_e = pygame.font.SysFont("arial", 40, bold=True)
+    # --- Carga de Assets del Nivel 3 ---
+    bg_roto = load_image(assets_dir, ["original", "img_3_roto", "nivel3_plaza_roto"])
+    if bg_roto: bg_roto = pygame.transform.scale(bg_roto, (W, H))
+    
+    bg_todo = load_image(assets_dir, ["img_4_todo", "nivel3_plaza_todo"])
+    if bg_todo: bg_todo = pygame.transform.scale(bg_todo, (W, H))
 
-    # --- CARGAR IMÁGENES ---
+    # Bote de Basura
+    BIN_SCALE = 0.24 
+    bin_img = load_image(assets_dir, ["basurero", "bote_basura", "trash_bin"])
+    if bin_img is None: bin_img = pygame.Surface((int(W * 0.15), int(W * 0.20)), pygame.SRCALPHA); bin_img.fill((90, 90, 90))
+    bin_img = scale_to_width(bin_img, int(W * BIN_SCALE))
+    bin_rect = bin_img.get_rect()
+    bin_rect.bottomright = (W - int(W * 0.05), H - int(W * 0.05))
+    BIN_RADIUS = max(36, int(W * 0.05))
     
-    # Nivel 1: Basura y Bote (GIGANTE)
-    img_basura = scale_to_width(load_image(assets_dir, ["trash_lata", "trash_1", "basura"], (100,100,100)), 60)
-    img_bote = scale_to_width(load_image(assets_dir, ["basurero", "bote_basura", "trash_bin"], (50,50,50)), 180) # 180px
+    # Basura/Semilla/Hoyo/Árbol
+    sprite_trash = load_image(assets_dir, ["trash_01", "trash_"])
+    if sprite_trash is None: sprite_trash = pygame.Surface((40, 40)); sprite_trash.fill((160, 160, 160))
     
-    # Nivel 2: Semilla y Árbol
-    img_semilla = scale_to_width(load_image(assets_dir, ["n2_semilla", "semilla"], (139,69,19)), 60)
-    img_hoyo = scale_to_width(load_image(assets_dir, ["n2_hoyo", "hoyo"], (30,30,30)), 80)
-    img_arbol = scale_to_width(load_image(assets_dir, ["n2_arbol", "arbol"], (0,100,0)), 160)
+    img_hoyo_surf = load_image(assets_dir, ["n2_hoyo", "hoyo"])
+    if img_hoyo_surf is None: img_hoyo_surf = pygame.Surface((66, 66)); img_hoyo_surf.fill((139, 69, 19))
+    img_hoyo = scale_to_width(img_hoyo_surf, 66)
+    
+    img_semilla_surf = load_image(assets_dir, ["n2_semilla", "semilla"])
+    if img_semilla_surf is None: img_semilla_surf = pygame.Surface((44, 44)); img_semilla_surf.fill((150, 255, 150))
+    img_semilla = scale_to_width(img_semilla_surf, 44)
 
-    # Nivel 3: Herramienta y Reparación
-    img_herramienta = scale_to_width(load_image(assets_dir, ["herramienta", "tool", "martillo", "wrench"], (0,0,255)), 60)
-    img_roto = load_image(assets_dir, ["grieta", "crack", "roto", "original"], (100,0,0))
-    if img_roto.get_width() == 64: 
-        s = pygame.Surface((100, 100)); s.fill((150, 150, 150)); pygame.draw.line(s, (50,0,0), (10,10), (90,90), 8); pygame.draw.line(s, (50,0,0), (90,10), (10,90), 8); img_roto = s
-    else: img_roto = scale_to_width(img_roto, 100)
-    
-    img_reparado = pygame.Surface(img_roto.get_size()); img_reparado.fill((100, 200, 100))
-    pygame.draw.rect(img_reparado, (255,255,255), img_reparado.get_rect(), 6)
+    img_arbol_surf = load_image(assets_dir, ["n2_arbol", "arbol"])
+    if img_arbol_surf is None: img_arbol_surf = pygame.Surface((180, 180)); img_arbol_surf.fill((0, 128, 0))
+    img_arbol = scale_to_width(img_arbol_surf, 180)
 
-    # Palomita
-    img_check = scale_to_width(load_image(assets_dir, ["basurita_entregada", "check", "palomita", "ok"], (0,255,0)), 80)
+    # Flecha Indicadora
+    arrow_img_orig = load_image(assets_dir, ["flecha_indicador", "arrow_indicator", "arrow"])
+    if arrow_img_orig is None:
+        arrow_img_orig = pygame.Surface((30, 30), pygame.SRCALPHA)
+        pygame.draw.polygon(arrow_img_orig, (255,200,0), [(0,30),(15,0),(30,30)])
+    arrow_img = scale_to_width(arrow_img_orig, 30)
     
-    # Botón Back (Más grande y abajo a la izquierda)
-    img_back_raw = load_image(assets_dir, ["btn_back", "flecha_atras", "back", "volver"], (200,50,50))
-    img_back = scale_to_width(img_back_raw, 100) # Tamaño grande 100px
-    # Posición: Abajo a la izquierda con margen
-    rect_back = img_back.get_rect(bottomleft=(30, H - 30))
-
-    # Personaje
-    frames = load_char_frames(assets_dir, 130, char_folder=personaje)
-    player = Player(frames, (W//2, H - 150), screen.get_rect())
-
-    # --- ESCENARIO ---
-    col_w = W // 3
-    y_items = H//2 + 100
+    # Controles y Distancia de Interacción
+    INTERACT_KEYS = (pygame.K_e, pygame.K_RETURN, pygame.K_SPACE)
+    INTERACT_DIST = int(W * 0.06)
     
-    # Suelo de los objetivos (alineados visualmente)
-    y_floor_targets = H//2 + 20 
-
-    # 1. Basura -> Bote (alineado al suelo)
-    item1 = TutorialItem(col_w * 0.5 - 80, y_items, img_basura, "basura")
-    target1 = TutorialTarget(col_w * 0.5 + 80, y_floor_targets, img_bote, img_bote, "basura", align_bottom=True)
+    # --- Estado del Tutorial ---
+    tutorial_phase = 0 
     
-    # 2. Semilla -> Árbol (alineado al suelo para que crezca hacia arriba)
-    item2 = TutorialItem(col_w * 1.5 - 80, y_items, img_semilla, "semilla")
-    target2 = TutorialTarget(col_w * 1.5 + 80, y_floor_targets, img_hoyo, img_arbol, "semilla", align_bottom=True)
+    # Fase 0: Inicialización
+    background, bg_rect = load_bg_fit(assets_dir, W, H, ["nivel1_parque"]) 
     
-    # 3. Reparar (alineado al centro o suelo, usaremos centro para la grieta)
-    item3 = TutorialItem(col_w * 2.5 - 80, y_items, img_herramienta, "reparar")
-    target3 = TutorialTarget(col_w * 2.5 + 80, y_floor_targets - 40, img_roto, img_reparado, "reparar")
-
-    items = pygame.sprite.Group(item1, item2, item3)
-    targets = pygame.sprite.Group(target1, target2, target3)
+    char_target_h = int(H * 0.14)
+    frames = load_char_frames(assets_dir, target_h=char_target_h, char_folder=personaje)
+    player = Player(frames, (W // 2, H // 2), screen.get_rect(), speed=320, anim_fps=8.0)
     
-    # Icono E
-    icon_e = font_e.render("E", True, (255,255,255))
-    bg_e = pygame.Surface((50,50), pygame.SRCALPHA)
-    pygame.draw.rect(bg_e, (0,0,0,180), (0,0,50,50), border_radius=10)
-    bg_e.blit(icon_e, icon_e.get_rect(center=(25,25)))
-
-    # Cartel HUD
-    hud_lines = [
-        "TUTORIAL DE ENTRENAMIENTO",
-        "Mover: WASD/Flechas | Acción: E / Enter"
-    ]
+    # Objetos para Fase 0
+    trash_obj = Trash(sprite_trash, (W // 2, H * 0.8), int(W * 0.035))
+    carrying: Optional[Trash] = None 
     
-    labels = [
-        ("NIVEL 1", "Lleva la basura", col_w * 0.5),
-        ("NIVEL 2", "Planta la semilla", col_w * 1.5),
-        ("NIVEL 3", "Repara la zona", col_w * 2.5)
-    ]
-
+    # Objetos para Fase 1
+    seed_obj: Optional[Seed] = None
+    hole_obj: Optional[Hole] = None
+    carrying_seed = False           
+    
+    # Objetos para Fase 2 (Reparación)
+    
+    # *** CORRECCIÓN: Definición de la zona BR (Abajo Derecha) ***
+    repair_zone_key = "BR" 
+    zones_map = {
+        "BR": pygame.Rect(int(W * 0.66), int(H * 0.55), int(W * 0.30), int(H * 0.40)) 
+    }
+    estado_reparacion = { "BR": False }
+    reparando_actualmente = None
+    progreso_reparacion = 0
+    
+    # Mensajes
+    current_tutorial_msg = ""
+    message_timer = 0.0
+    message_duration = 3.5 
+    
+    def set_message(msg: str, duration: float = 3.5):
+        nonlocal current_tutorial_msg, message_timer, message_duration
+        current_tutorial_msg = msg
+        message_duration = duration
+        message_timer = message_duration
+    
+    # --- Bucle Principal ---
     t = 0.0
     running = True
+    start_level_music(assets_dir)
+
     while running:
-        dt = clock.tick(60) / 1000.0
-        t += dt
-        mouse_pos = pygame.mouse.get_pos()
+        dt_ms = clock.tick(60)
+        dt_sec = dt_ms / 1000.0
+        t += dt_sec
+        interact = False
+        reparar_key_pressed = False
+
+        if message_timer > 0.0:
+            message_timer = max(0.0, message_timer - dt_sec)
+
+        for e in pygame.event.get():
+            if e.type == pygame.QUIT:
+                stop_level_music(); return "menu"
+            if e.type == pygame.KEYDOWN:
+                if e.key == pygame.K_ESCAPE:
+                    stop_level_music(); return "menu"
+                if e.key in INTERACT_KEYS:
+                    interact = True
+                if e.key == pygame.K_r: # Tecla de Reparación del Nivel 3
+                    reparar_key_pressed = True
+
+        # ----------------------------------------------------------------------
+        # LÓGICA DE JUEGO (Actualización)
+        # ----------------------------------------------------------------------
+
+        player.handle_input(dt_sec)
         
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT: running = False; return 
+        if carrying:
+            ax, ay = _carry_anchor(player, carrying.rect)
+            carrying.rect.center = (ax, ay)
+        if carrying_seed:
+            player.carrying_image = img_semilla
+        else:
+            if not carrying:
+                player.carrying_image = None
+        
+        if hole_obj:
+            hole_obj.update(dt_ms)
+
+        # --- Interacción ---
+        if interact:
+            if tutorial_phase == 0:
+                # FASE 0: BASURA
+                if not carrying:
+                    d = math.hypot(player.rect.centerx - trash_obj.rect.centerx,
+                                   player.rect.centery - trash_obj.rect.centery)
+                    if d <= INTERACT_DIST and not trash_obj.is_delivered:
+                        carrying = trash_obj
+                        carrying.carried = True
+                        set_message("¡Basura recogida! Llévala al bote.", 1.5)
+                        play_sfx("sfx_pick_up", assets_dir)
+                else:
+                    d = math.hypot(player.rect.centerx - bin_rect.centerx,
+                                   player.rect.centery - bin_rect.centery)
+                    if d <= BIN_RADIUS * 1.5:
+                        trash_obj.is_delivered = True
+                        carrying = None
+                        
+                        set_message("¡FELICIDADES! Siguiente: Plantación.", 4.0)
+                        play_sfx("sfx_win", assets_dir) 
+                        tutorial_phase = 1
+                        
+                        # Transición a Fase 1
+                        background, bg_rect = load_bg_fit(assets_dir, W, H, ["nivel2_calle", "n2_fondo_calle", "calle"]) 
+                        player.rect.center = (W // 2, H // 2)
+                        seed_obj = Seed((W // 4, H * 3 // 4), img_semilla)
+                        hole_obj = Hole((W * 2 // 5, H * 2 // 5), img_hoyo, assets_dir)
+                        
+            elif tutorial_phase == 1:
+                # FASE 1: PLANTACIÓN
+                if not carrying_seed:
+                    d = math.hypot(player.rect.centerx - seed_obj.rect.centerx,
+                                   player.rect.centery - seed_obj.rect.centery)
+                    if d <= INTERACT_DIST and not seed_obj.taken:
+                        seed_obj.taken = True
+                        carrying_seed = True
+                        player.carrying_image = img_semilla
+                        set_message("Semilla recogida. ¡Plántala en el hueco!", 2.0)
+                        play_sfx("sfx_pick_seed", assets_dir)
+                else:
+                    d = math.hypot(player.rect.centerx - hole_obj.rect.centerx,
+                                   player.rect.centery - hole_obj.rect.centery)
+                    if d <= INTERACT_DIST and not hole_obj.has_tree and hole_obj.grow_timer == 0:
+                        carrying_seed = False
+                        player.carrying_image = None
+                        hole_obj.start_grow()
+                        set_message("¡Plantación iniciada! Espera a que crezca el árbol.", 3.0)
+                        play_sfx("sfx_plant", assets_dir)
             
-            if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-                if rect_back.collidepoint(mouse_pos):
-                    play_sfx("sfx_click", assets_dir)
-                    running = False
+            # --- Fase 3 (Conclusión) se activa en la lógica de reparación ---
 
-            if event.type == pygame.KEYDOWN:
-                if event.key == pygame.K_ESCAPE: play_sfx("sfx_click", assets_dir); running = False 
+        # --- Lógica de Transición de Fase 1 a Fase 2 ---
+        if tutorial_phase == 1 and hole_obj and hole_obj.has_tree:
+             set_message("¡Árbol plantado! Última prueba: Reparación. Acércate al edificio.", 4.0)
+             tutorial_phase = 2 
+             
+             # Transición a Fase 2
+             background = bg_roto
+             background.get_rect(topleft=(0,0))
+             player.rect.center = (W // 2, H * 0.7)
+             
+        # --- LÓGICA ESPECÍFICA DE REPARACIÓN (FASE 2) ---
+        if tutorial_phase == 2:
+            zona_activa = None
+            if not estado_reparacion[repair_zone_key]:
+                if player.rect.colliderect(zones_map[repair_zone_key]):
+                     zona_activa = repair_zone_key
+            
+            if zona_activa and reparar_key_pressed:
+                reparando_actualmente = zona_activa
+                progreso_reparacion += 1
                 
-                if event.key == pygame.K_e or event.key == pygame.K_RETURN:
-                    if player.carrying_item:
-                        hit = pygame.sprite.spritecollideany(player, targets)
-                        if hit:
-                            if hit.kind == player.carrying_item.kind and not hit.done:
-                                player.carrying_item.completed = True
-                                player.carrying_item.carried = False
-                                player.carrying_item = None
-                                hit.complete() 
-                                play_sfx("sfx_plant", assets_dir) 
-                            else:
-                                player.carrying_item.carried = False
-                                player.carrying_item.reset()
-                                player.carrying_item = None
-                        else:
-                            player.carrying_item.carried = False
-                            player.carrying_item.reset()
-                            player.carrying_item = None
-                    else:
-                        for it in items:
-                            if not it.completed and not it.carried:
-                                dist = math.hypot(player.rect.centerx - it.rect.centerx, player.rect.centery - it.rect.centery)
-                                if dist < 100: 
-                                    player.carrying_item = it
-                                    it.carried = True
-                                    play_sfx("sfx_pick_seed", assets_dir)
-                                    break
+                # REPARACIÓN INSTANTÁNEA PARA EL TUTORIAL
+                if progreso_reparacion >= TIEMPO_PARA_REPARAR_TUTORIAL:
+                    estado_reparacion[zona_activa] = True
+                    progreso_reparacion = 0
+                    reparando_actualmente = None
+                    play_sfx("sfx_win", assets_dir) 
+                    
+                    # PASAR A FASE 3 (FIN)
+                    set_message("¡TRES PRUEBAS SUPERADAS! Tutorial completo. Estás listo para la misión.", 5.0)
+                    tutorial_phase = 3
+            elif not reparar_key_pressed:
+                progreso_reparacion = 0; reparando_actualmente = None
+            
+        # --- Lógica de salida al terminar el tutorial (Fase 3) ---
+        if tutorial_phase == 3 and message_timer <= 0.0:
+            running = False
 
-        player.handle_input(dt)
-
-        screen.fill((60, 140, 70)) 
-        # Líneas divisorias
-        pygame.draw.line(screen, (255,255,255), (col_w, 130), (col_w, H-20), 3)
-        pygame.draw.line(screen, (255,255,255), (col_w*2, 130), (col_w*2, H-20), 3)
-
-        # --- DIBUJAR HUD ---
-        for i, line in enumerate(hud_lines):
-            shadow = font_hud.render(line, True, (15, 15, 15))
-            screen.blit(shadow, (16 + 2, 20 + 2 + i * 28))
-            text = font_hud.render(line, True, (255, 255, 255))
-            screen.blit(text, (16, 20 + i * 28))
-
-        # Botón Back (Abajo Izquierda)
-        if rect_back.collidepoint(mouse_pos):
-             scaled_back = pygame.transform.smoothscale(img_back, (int(rect_back.width * 1.1), int(rect_back.height * 1.1)))
-             screen.blit(scaled_back, scaled_back.get_rect(center=rect_back.center))
-        else:
-             screen.blit(img_back, rect_back)
-
-        # Etiquetas
-        for title, desc, cx in labels:
-            lbl_t = font_label.render(title, True, (255, 255, 0))
-            lbl_d = font_label.render(desc, True, (240, 240, 240))
-            screen.blit(lbl_t, lbl_t.get_rect(center=(cx, 100)))
-            screen.blit(lbl_d, lbl_d.get_rect(center=(cx, 130)))
-
-        for tar in targets:
-            screen.blit(tar.image, tar.rect)
-            if tar.done:
-                off = math.sin(t * 8) * 5
-                # Palomita encima del objeto
-                cr = img_check.get_rect(center=tar.rect.center)
-                cr.y -= (tar.rect.height//2 + 20 + off)
-                screen.blit(img_check, cr)
-
-        for it in items: it.draw(screen, t)
-        player.draw(screen)
-
-        show_e = False
-        if player.carrying_item:
-            hit = pygame.sprite.spritecollideany(player, targets)
-            if hit and hit.kind == player.carrying_item.kind and not hit.done: show_e = True
-        else:
-            for it in items:
-                if not it.completed and not it.carried:
-                    dist = math.hypot(player.rect.centerx - it.rect.centerx, player.rect.centery - it.rect.centery)
-                    if dist < 100: show_e = True; break
+        # ----------------------------------------------------------------------
+        # LÓGICA DE DIBUJO
+        # ----------------------------------------------------------------------
         
-        if show_e:
-            b = math.sin(t * 10) * 3
-            screen.blit(bg_e, bg_e.get_rect(midbottom=(player.rect.centerx, player.rect.top - 15 + b)))
+        screen.fill((34, 45, 38))
+        screen.blit(background, bg_rect)
+        
+        if tutorial_phase == 0:
+            # DIBUJO FASE 0
+            screen.blit(bin_img, bin_rect) 
+            trash_obj.draw(screen, t) 
+            
+            # HUD y Flechas...
+            if not carrying and not trash_obj.is_delivered: draw_movement_hud(screen, W // 2 - 100, H // 4, 30, font)
+            if carrying and not trash_obj.is_delivered:
+                target_center = bin_rect.center; player_center = player.rect.center
+                angle = math.atan2(target_center[1] - player_center[1], target_center[0] - player_center[0])
+                arrow_rotated = pygame.transform.rotate(arrow_img, -math.degrees(angle) - 90)
+                arrow_distance = player.rect.height * 0.7
+                arrow_x = player_center[0] + arrow_distance * math.cos(angle); arrow_y = player_center[1] + arrow_distance * math.sin(angle)
+                screen.blit(arrow_rotated, arrow_rotated.get_rect(center=(int(arrow_x), int(arrow_y))))
 
+            if not carrying and not trash_obj.is_delivered:
+                 d = math.hypot(player.rect.centerx - trash_obj.rect.centerx, player.rect.centery - trash_obj.rect.centery)
+                 if d <= INTERACT_DIST:
+                    txt = small_font.render("Recoger [E/SPACE]", True, BLANCO); screen.blit(txt, txt.get_rect(midbottom=(trash_obj.rect.centerx, trash_obj.rect.top - 20)))
+            if carrying and not trash_obj.is_delivered:
+                d = math.hypot(player.rect.centerx - bin_rect.centerx, player.rect.centery - bin_rect.centery)
+                if d <= BIN_RADIUS * 1.5:
+                    txt = small_font.render("Depositar [E/SPACE]", True, BLANCO); screen.blit(txt, txt.get_rect(midbottom=(bin_rect.centerx, bin_rect.top - 20)))
+
+
+        elif tutorial_phase == 1:
+            # DIBUJO FASE 1
+            if seed_obj: seed_obj.draw(screen)
+            if hole_obj: hole_obj.draw(screen, img_arbol, show_glow=carrying_seed, t=t)
+            
+            if not carrying_seed and seed_obj and not seed_obj.taken: draw_movement_hud(screen, W // 2 - 100, H // 4, 30, font)
+
+            if carrying_seed and hole_obj and not hole_obj.has_tree and hole_obj.grow_timer == 0:
+                target_center = hole_obj.rect.center; player_center = player.rect.center
+                angle = math.atan2(target_center[1] - player_center[1], target_center[0] - player_center[0])
+                arrow_rotated = pygame.transform.rotate(arrow_img, -math.degrees(angle) - 90)
+                arrow_distance = player.rect.height * 0.7
+                arrow_x = player_center[0] + arrow_distance * math.cos(angle); arrow_y = player_center[1] + arrow_distance * math.sin(angle)
+                screen.blit(arrow_rotated, arrow_rotated.get_rect(center=(int(arrow_x), int(arrow_y))))
+
+            if seed_obj and not carrying_seed and not seed_obj.taken:
+                if player.rect.colliderect(seed_obj.rect.inflate(20, 20)):
+                    txt = small_font.render("Recoger [E/SPACE]", True, BLANCO); screen.blit(txt, txt.get_rect(midbottom=(seed_obj.rect.centerx, seed_obj.rect.top - 20)))
+
+            if hole_obj and carrying_seed and not hole_obj.has_tree and hole_obj.grow_timer == 0:
+                if player.rect.colliderect(hole_obj.rect.inflate(20, 20)):
+                    txt = small_font.render("Plantar [E/SPACE]", True, BLANCO); screen.blit(txt, txt.get_rect(midbottom=(hole_obj.rect.centerx, hole_obj.rect.top - 20)))
+            
+        elif tutorial_phase >= 2:
+            # DIBUJO FASE 2 / 3
+            
+            rect_target = zones_map[repair_zone_key]
+
+            # Dibujar la zona reparada sobre el fondo roto
+            if estado_reparacion[repair_zone_key] and bg_todo:
+                screen.blit(bg_todo, rect_target.topleft, area=rect_target)
+
+            # Indicador de Reparación [R] y Flecha al objetivo
+            if not estado_reparacion[repair_zone_key]:
+                center_target = rect_target.center
+                
+                # Flecha indicadora al edificio
+                player_center = player.rect.center
+                angle = math.atan2(center_target[1] - player_center[1], center_target[0] - player_center[0])
+                arrow_rotated = pygame.transform.rotate(arrow_img, -math.degrees(angle) - 90)
+                arrow_distance = player.rect.height * 0.7
+                arrow_x = player_center[0] + arrow_distance * math.cos(angle); arrow_y = player_center[1] + arrow_distance * math.sin(angle)
+                screen.blit(arrow_rotated, arrow_rotated.get_rect(center=(int(arrow_x), int(arrow_y))))
+                
+                # Mensaje de Reparar
+                if player.rect.colliderect(rect_target):
+                     txt = small_font.render("Reparar [R]", True, BLANCO);
+                     screen.blit(txt, txt.get_rect(center=(center_target[0], center_target[1] + 10)))
+                     
+            # Barra de progreso cuando reparando
+            if reparando_actualmente:
+                 pos_barra_x = player.rect.centerx - 25
+                 pos_barra_y = player.rect.top - 30
+                 pygame.draw.rect(screen, GRIS, (pos_barra_x, pos_barra_y, 50, 10), border_radius=2)
+                 ancho_progreso = 50 * (progreso_reparacion / TIEMPO_PARA_REPARAR_TUTORIAL)
+                 pygame.draw.rect(screen, VERDE, (pos_barra_x, pos_barra_y, ancho_progreso, 10), border_radius=2)
+
+
+        player.draw(screen)
+        
+        # --- DIBUJO DE MENSAJE PRINCIPAL ---
+        if message_timer > 0.0 and current_tutorial_msg:
+            msg_font = pygame.font.SysFont("arial", 40, bold=True)
+            a = int(255 * (message_timer / message_duration))
+            msg_surf = msg_font.render(current_tutorial_msg, True, BLANCO)
+            shadow = msg_font.render(current_tutorial_msg, True, (0, 0, 0))
+
+            msg_x = W // 2; msg_y = H // 2 + int(H * 0.08)
+
+            shadow_s = shadow.copy(); shadow_s.set_alpha(a)
+            msg_s = msg_surf.copy(); msg_s.set_alpha(a)
+
+            screen.blit(shadow_s, shadow_s.get_rect(center=(msg_x + 4, msg_y + 4)))
+            screen.blit(msg_s, msg_s.get_rect(center=(msg_x, msg_y)))
+            
         pygame.display.flip()
+        
+        # Lógica de salida al terminar el tutorial
+        if tutorial_phase == 3 and message_timer <= 0.0:
+            running = False
+            
+    # --- FIN DEL JUEGO (Salida al menú de selección) ---
     stop_level_music()
+    try:
+        import play
+        play.run(screen, assets_dir) 
+    except ImportError:
+        pass
+    return "menu"
+# (FIN DE PARTE 2)

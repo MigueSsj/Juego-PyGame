@@ -5,6 +5,7 @@ from typing import Optional, List, Tuple
 from audio_shared import play_sfx
 import re
 
+
 # ===== helpers =====
 def find_by_stem(assets_dir: Path, stem: str) -> Optional[Path]:
     exts = (".png", ".jpg", ".jpeg")

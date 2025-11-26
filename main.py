@@ -3,7 +3,7 @@ import opciones
 import play
 import instrucciones
 import tutorial
-import config  # <--- IMPORTANTE: Importar el config para traducciones
+import config # IMPORTANTE: Importar el config para traducciones
 from pathlib import Path
 from audio_shared import start_menu_music, ensure_menu_music_running, play_click
 
@@ -15,13 +15,14 @@ BASE_DIR = Path(__file__).resolve().parent
 os.chdir(BASE_DIR)
 ASSETS = BASE_DIR / "assets"
 
+# === STEMS (Corregido 'inst') ===
 STEMS = {
-    "bg":    "Background_f",
+    "bg": "Background_f",
     "title": "titulo_juego",
-    "play":  "btn_play",
-    "opc":   "btn_opc",
-    "inst":  "btn_instruccio", # Asegúrate que en config.py la clave sea igual o mapeada
-    "tut":   "Tutorial", 
+    "play": "btn_play",
+    "opc": "btn_opc",
+    "inst": "btn_instrucciones", # ✅ CORREGIDO
+    "tut": "Tutorial", 
 }
 SHOW_DEBUG_BORDERS = False
 
@@ -30,7 +31,8 @@ def find_by_stem(stem: str) -> Path | None:
     exts = (".png", ".jpg", ".jpeg")
     for ext in exts:
         p = ASSETS / f"{stem}{ext}"
-        if p.exists(): return p
+        if p.exists():
+            return p
     cands = []
     for ext in exts:
         cands += list(ASSETS.glob(f"{stem}*{ext}"))
@@ -50,7 +52,8 @@ def load_raw(stem: str):
         # Fallback específico para Tutorial si no existe
         if stem == "Tutorial":
             print(f"[WARN] No encontré '{stem}', usando superficie vacía temporal.")
-            s = pygame.Surface((200, 50)); s.fill((100, 100, 200))
+            s = pygame.Surface((200, 50))
+            s.fill((100, 100, 200))
             return s, Path("dummy.png")
         raise FileNotFoundError(f"No encontré '{stem}*.png/.jpg/.jpeg' en {ASSETS}")
     surf = pygame.image.load(str(p))
@@ -80,12 +83,22 @@ background = bg_raw.convert()
 
 # Variables globales para UI
 title_img = None
-btn_jugar = None; btn_opc = None; btn_inst = None; btn_tut = None
-btn_jugar_h = None; btn_opc_h = None; btn_inst_h = None; btn_tut_h = None
-rect_jugar = None; rect_opc = None; rect_inst = None; rect_tut = None
-title_w = 0; title_h = 0
+btn_jugar = None
+btn_opc = None
+btn_inst = None
+btn_tut = None
+btn_jugar_h = None
+btn_opc_h = None
+btn_inst_h = None
+btn_tut_h = None
+rect_jugar = None
+rect_opc = None
+rect_inst = None
+rect_tut = None
+title_w = 0
+title_h = 0
 
-# === ARREGLO: Definir TITLE_TOP globalmente ===
+# === Definición de TITLE_TOP ===
 TITLE_TOP = int(H * 0.12)
 
 # === FUNCIÓN DE RECARGA (Para actualizar idioma) ===
@@ -93,23 +106,21 @@ def reload_ui():
     global title_img, btn_jugar, btn_opc, btn_inst, btn_tut
     global btn_jugar_h, btn_opc_h, btn_inst_h, btn_tut_h
     global rect_jugar, rect_opc, rect_inst, rect_tut, title_w, title_h
-    # Ya no es necesario declarar TITLE_TOP aquí como global si solo la leemos, 
-    # pero si la calculamos aquí, necesitamos 'global TITLE_TOP'.
-    # Como es constante basada en H, la dejamos fuera.
+    # TITLE_TOP se accede globalmente
 
-    # Cargar imágenes (ahora load_raw usa config)
-    title_raw,  title_path = load_raw(STEMS["title"])
-    play_raw,   play_path  = load_raw(STEMS["play"])
-    opc_raw,    opc_path   = load_raw(STEMS["opc"])
-    inst_raw,   inst_path  = load_raw(STEMS["inst"])
-    tut_raw,    tut_path   = load_raw(STEMS["tut"])
+    # Cargar imágenes (load_raw usa config)
+    title_raw, title_path = load_raw(STEMS["title"])
+    play_raw, play_path = load_raw(STEMS["play"])
+    opc_raw, opc_path = load_raw(STEMS["opc"])
+    inst_raw, inst_path = load_raw(STEMS["inst"])
+    tut_raw, tut_path = load_raw(STEMS["tut"])
 
     # Convertir
     t_img = title_raw.convert_alpha() if title_path.suffix.lower()==".png" else title_raw.convert()
-    b_play = play_raw.convert_alpha()  if play_path.suffix.lower()==".png"  else play_raw.convert()
-    b_opc = opc_raw.convert_alpha()   if opc_path.suffix.lower()==".png"   else opc_raw.convert()
-    b_inst = inst_raw.convert_alpha()  if inst_path.suffix.lower()==".png"  else inst_raw.convert()
-    b_tut = tut_raw.convert_alpha()   if tut_path.suffix.lower()==".png"   else tut_raw.convert()
+    b_play = play_raw.convert_alpha() if play_path.suffix.lower()==".png" else play_raw.convert()
+    b_opc = opc_raw.convert_alpha() if opc_path.suffix.lower()==".png" else opc_raw.convert()
+    b_inst = inst_raw.convert_alpha() if inst_path.suffix.lower()==".png" else inst_raw.convert()
+    b_tut = tut_raw.convert_alpha() if tut_path.suffix.lower()==".png" else tut_raw.convert()
 
     # ===== ESCALADOS (Tus valores originales) =====
     TITLE_SCALE = 1.00
@@ -117,28 +128,34 @@ def reload_ui():
     title_w, title_h = title_img.get_size()
 
     TARGET_BTN_W = int(W * 0.28)
-    HOVER_SCALE  = 1.08
+    HOVER_SCALE = 1.08
 
     btn_jugar = scale_to_width(b_play, TARGET_BTN_W)
-    btn_opc   = scale_to_width(b_opc,   TARGET_BTN_W)
-    btn_inst  = scale_to_width(b_inst,  TARGET_BTN_W)
-    btn_tut   = scale_to_width(b_tut,   int(TARGET_BTN_W * 0.8)) 
+    btn_opc = scale_to_width(b_opc, TARGET_BTN_W)
+    btn_inst = scale_to_width(b_inst, TARGET_BTN_W)
+    btn_tut = scale_to_width(b_tut, int(TARGET_BTN_W * 0.8)) 
 
     btn_jugar_h = scale_to_width(btn_jugar, int(TARGET_BTN_W * HOVER_SCALE))
-    btn_opc_h   = scale_to_width(btn_opc,   int(TARGET_BTN_W * HOVER_SCALE))
-    btn_inst_h  = scale_to_width(btn_inst,  int(TARGET_BTN_W * HOVER_SCALE))
-    btn_tut_h   = scale_to_width(btn_tut,   int((TARGET_BTN_W * 0.8) * HOVER_SCALE))
+    btn_opc_h = scale_to_width(btn_opc, int(TARGET_BTN_W * HOVER_SCALE))
+    btn_inst_h = scale_to_width(btn_inst, int(TARGET_BTN_W * HOVER_SCALE))
+    btn_tut_h = scale_to_width(btn_tut, int((TARGET_BTN_W * 0.8) * HOVER_SCALE))
 
     # ===== LAYOUT (Tus posiciones originales) =====
-    GAP_TITLE_BTN  = 20
-    GAP_BOTONES    = 15 
+    GAP_TITLE_BTN = 20
+    GAP_BOTONES = 15 
 
     start_y = TITLE_TOP + title_h + GAP_TITLE_BTN
 
-    rect_jugar = btn_jugar.get_rect(center=(W // 2, 0)); rect_jugar.top = start_y
-    rect_opc   = btn_opc.get_rect(center=(W // 2, 0));   rect_opc.top   = rect_jugar.bottom + GAP_BOTONES
-    rect_inst  = btn_inst.get_rect(center=(W // 2, 0));  rect_inst.top  = rect_opc.bottom   + GAP_BOTONES
-    rect_tut   = btn_tut.get_rect(bottomright=(W - 30, H - 80)) 
+    rect_jugar = btn_jugar.get_rect(center=(W // 2, 0))
+    rect_jugar.top = start_y
+    
+    rect_opc = btn_opc.get_rect(center=(W // 2, 0))
+    rect_opc.top = rect_jugar.bottom + GAP_BOTONES
+    
+    rect_inst = btn_inst.get_rect(center=(W // 2, 0))
+    rect_inst.top = rect_opc.bottom + GAP_BOTONES
+    
+    rect_tut = btn_tut.get_rect(bottomright=(W - 30, H - 80)) 
 
     MARGIN_BOTTOM = 8
     overflow = rect_inst.bottom - (H - MARGIN_BOTTOM)
@@ -157,26 +174,32 @@ start_menu_music(ASSETS)
 scroll_x = 0
 SCROLL_SPEED = 2
 t = 0
-FLOAT_AMP   = 8
+FLOAT_AMP = 8 # Se define aquí, fuera de los helpers
 FLOAT_SPEED = 0.08
 
 # Helper para lanzar niveles según número/dificultad
 def _load_level_module(nivel: int, dificultad: str):
     if nivel == 1:
         if dificultad == "facil":
-            import levels.nivel1_facil as mod; return mod
+            import levels.nivel1_facil as mod
+            return mod
         else:
-            import levels.nivel1_dificil as mod; return mod
+            import levels.nivel1_dificil as mod
+            return mod
     elif nivel == 2:
         if dificultad == "facil":
-            import levels.nivel2_facil as mod; return mod
+            import levels.nivel2_facil as mod
+            return mod
         else:
-            import levels.nivel2_dificil as mod; return mod
+            import levels.nivel2_dificil as mod
+            return mod
     elif nivel == 3:
         if dificultad == "facil":
-            import levels.nivel3_facil as mod; return mod
+            import levels.nivel3_facil as mod
+            return mod
         else:
-            import levels.nivel3_dificil as mod; return mod 
+            import levels.nivel3_dificil as mod
+            return mod 
 
 # ===== LOOP =====
 running = True
@@ -192,7 +215,8 @@ while running:
 
     # Fondo + título
     scroll_x -= SCROLL_SPEED
-    if scroll_x <= -W: scroll_x = 0
+    if scroll_x <= -W:
+        scroll_x = 0
     screen.blit(background, (scroll_x, 0))
     screen.blit(background, (scroll_x + W, 0))
 
@@ -203,14 +227,17 @@ while running:
     # Botones (hover)
     def draw_btn(img, img_hover, base_rect):
         if base_rect.collidepoint(mouse_pos):
-            r = img_hover.get_rect(center=base_rect.center); r.y -= 2
-            screen.blit(img_hover, r); return r
-        screen.blit(img, base_rect); return base_rect
+            r = img_hover.get_rect(center=base_rect.center)
+            r.y -= 2
+            screen.blit(img_hover, r)
+            return r
+        screen.blit(img, base_rect)
+        return base_rect
 
     rj = draw_btn(btn_jugar, btn_jugar_h, rect_jugar)
-    ro = draw_btn(btn_opc,   btn_opc_h,   rect_opc)
-    ri = draw_btn(btn_inst,  btn_inst_h,  rect_inst)
-    rt = draw_btn(btn_tut,   btn_tut_h,   rect_tut) 
+    ro = draw_btn(btn_opc, btn_opc_h, rect_opc)
+    ri = draw_btn(btn_inst, btn_inst_h, rect_inst)
+    rt = draw_btn(btn_tut, btn_tut_h, rect_tut) 
 
     if SHOW_DEBUG_BORDERS:
         pygame.draw.rect(screen, (255, 0, 0), rj, 2)
@@ -223,7 +250,7 @@ while running:
         # --- BOTÓN JUGAR ---
         if rj.collidepoint(mouse_pos):
             play_click(ASSETS)
-            result = play.run(screen, ASSETS)  
+            result = play.run(screen, ASSETS) # ESTA ES LA LÍNEA CORREGIDA
             ensure_menu_music_running(ASSETS)
 
             if isinstance(result, dict) and "nivel" in result and "dificultad" in result:
@@ -238,7 +265,10 @@ while running:
                     print("ERROR: no pude cargar módulo de nivel:", e)
                     traceback.print_exc()
                     ensure_menu_music_running(ASSETS)
-                    pygame.display.flip(); clock.tick(60); t += 1; continue
+                    pygame.display.flip()
+                    clock.tick(60)
+                    t += 1
+                    continue
 
                 try:
                     char_folder = personaje
@@ -307,7 +337,10 @@ while running:
                     traceback.print_exc()
                     ensure_menu_music_running(ASSETS)
 
-            pygame.display.flip(); clock.tick(60); t += 1; continue
+            pygame.display.flip()
+            clock.tick(60)
+            t += 1
+            continue
 
         # --- BOTÓN OPCIONES ---
         elif ro.collidepoint(mouse_pos):
@@ -317,21 +350,30 @@ while running:
             # === MAGIA: RECARGAMOS IMÁGENES AL VOLVER ===
             reload_ui() 
             ensure_menu_music_running(ASSETS)
-            pygame.display.flip(); clock.tick(60); t += 1; continue
+            pygame.display.flip()
+            clock.tick(60)
+            t += 1
+            continue
 
         # --- BOTÓN INSTRUCCIONES ---
         elif ri.collidepoint(mouse_pos):
             play_click(ASSETS)
             _ = instrucciones.run(screen, ASSETS)
             ensure_menu_music_running(ASSETS)
-            pygame.display.flip(); clock.tick(60); t += 1; continue
+            pygame.display.flip()
+            clock.tick(60)
+            t += 1
+            continue
         
         # --- BOTÓN TUTORIAL ---
         elif rt.collidepoint(mouse_pos):
             play_click(ASSETS)
             tutorial.run(screen, ASSETS, personaje="PERSONAJE H") 
             ensure_menu_music_running(ASSETS)
-            pygame.display.flip(); clock.tick(60); t += 1; continue
+            pygame.display.flip()
+            clock.tick(60)
+            t += 1
+            continue
 
     pygame.display.flip()
     clock.tick(60)
