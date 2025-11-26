@@ -3,24 +3,21 @@ import pygame, math, random, re
 from pathlib import Path
 from typing import Optional
 
-# === CAMBIO: Importar funciones de música ===
+# === Importar funciones de música (si existen) ===
 try:
     from audio_shared import start_level_music, start_suspense_music, stop_level_music
 except ImportError:
     print("WARN: No se pudo importar audio_shared. La música no funcionará.")
-    # Fallback para que el juego no crashee si audio_shared no está listo
     def start_level_music(assets_dir: Path): pass
     def start_suspense_music(assets_dir: Path): pass
     def stop_level_music(): pass
-# ==========================================
 
 
 # ====== SFX click (VOLÚMEN AJUSTABLE) ======
-CLICK_VOL = 0.25  # <-- AJUSTA AQUÍ (0.0 = mudo, 1.0 = máximo)
+CLICK_VOL = 0.25
 _click_snd: pygame.mixer.Sound | None = None
 
 def play_click(assets_dir: Path):
-    """Reproduce el sfx de click con el volumen global CLICK_VOL."""
     global _click_snd
     try:
         if _click_snd is None:
@@ -40,7 +37,7 @@ def play_click(assets_dir: Path):
     except Exception:
         pass
 
-# ---------- helpers ----------
+# ---------- Helpers ----------
 def find_by_stem(folder: Path, stem: str) -> Optional[Path]:
     exts = (".png", ".jpg", ".jpeg")
     for ext in exts:
@@ -75,20 +72,17 @@ def make_glow(radius: int) -> pygame.Surface:
     return s
 
 def load_bg_fit(assets_dir: Path, W: int, H: int) -> tuple[pygame.Surface, pygame.Rect]:
-    """Carga el fondo y lo AJUSTA manteniendo proporción (fit), sin recortar."""
     candidates = ["nivel1_parque", "parque_nivel1", "park_level1", "nivel1", "bg_parque", "nivel1_bg"]
     p = None
     for stem in candidates:
         p = find_by_stem(assets_dir, stem)
         if p:
             break
-
     if p:
         img = load_surface(p)
     else:
         img = pygame.Surface((W, H))
         img.fill((40, 120, 40))
-
     iw, ih = img.get_size()
     ratio = min(W / iw, H / ih) if iw and ih else 1.0
     new_w, new_h = int(iw * ratio), int(ih * ratio)
@@ -103,9 +97,7 @@ def load_trash_images(assets_dir: Path) -> list[pygame.Surface]:
         imgs.append(s.convert_alpha() if p.suffix.lower() == ".png" else s)
     return imgs
 
-# === Punto de anclaje para sostener la basura ===
 def _carry_anchor(player: pygame.sprite.Sprite, carrying: pygame.sprite.Sprite) -> tuple[int, int]:
-    """Anclaje más bajo (palmas) con leve ajuste por dirección."""
     rect = player.rect
     cx, cy = rect.centerx, rect.centery
     cy = rect.centery + int(rect.height * 0.22)
@@ -120,11 +112,9 @@ def _carry_anchor(player: pygame.sprite.Sprite, carrying: pygame.sprite.Sprite) 
         cy += int(rect.height * 0.04)
     return cx, cy
 
-# === CARGA DE FRAMES (AHORA DETECTA M/H) ===
 def load_char_frames(assets_dir: Path, target_h: int, *, char_folder: str = "PERSONAJE H") -> dict[str, list[pygame.Surface] | pygame.Surface]:
     char_dir = assets_dir / char_folder
     if not char_dir.exists():
-        # Fallback a H si M no existe, o viceversa
         alt_folder = "PERSONAJE H" if "M" in char_folder else "PERSONAJE M"
         if (assets_dir / alt_folder).exists():
             print(f"WARN: Carpeta '{char_folder}' no encontrada. Usando '{alt_folder}'.")
@@ -132,16 +122,12 @@ def load_char_frames(assets_dir: Path, target_h: int, *, char_folder: str = "PER
         else:
             raise FileNotFoundError(f"No se encontró la carpeta 'assets/{char_folder}' ni una alternativa.")
 
-    # === ¡NUEVA LÓGICA DE PREFIJO! ===
-    # Si es PERSONAJE M, busca "womanguardian_". Si no, busca "ecoguardian_"
     if "M" in char_folder.upper():
         prefix = "womanguardian"
     else:
         prefix = "ecoguardian"
-    # ==================================
 
     def _load_seq(name: str) -> list[pygame.Surface]:
-        # Usa el prefijo dinámico
         files: list[Path] = []
         for ext in (".png", ".jpg", ".jpeg"):
             files += list(char_dir.glob(f"{prefix}_{name}_[0-9]*{ext}"))
@@ -156,7 +142,6 @@ def load_char_frames(assets_dir: Path, target_h: int, *, char_folder: str = "PER
         return seq
 
     def _load_idle(name: str) -> Optional[pygame.Surface]:
-        # Usa el prefijo dinámico
         for ext in (".png", ".jpg", ".jpeg"):
             p = char_dir / f"{prefix}_{name}{ext}"
             if p.exists():
@@ -164,7 +149,6 @@ def load_char_frames(assets_dir: Path, target_h: int, *, char_folder: str = "PER
                 return img.convert_alpha() if p.suffix.lower()==".png" else img.convert()
         return None
 
-    # Carga usando nombres genéricos
     right = _load_seq("walk_right")
     left  = _load_seq("walk_left")
     down  = _load_seq("walk_down")
@@ -206,10 +190,9 @@ def load_char_frames(assets_dir: Path, target_h: int, *, char_folder: str = "PER
         return out
 
     def _normalize_single(s: pygame.Surface) -> pygame.Surface:
-        if s is None: # Añadir check por si idle_up o down son None
-             # Devuelve una superficie vacía del tamaño escalado_base
+        if s is None:
              h = target_h
-             w = int(h * 0.7) # Asumir una proporción si no hay imagen
+             w = int(h * 0.7)
              return pygame.Surface((w, h), pygame.SRCALPHA)
         S = _scale(s)
         canvas = pygame.Surface((S.get_width(), S.get_height()), pygame.SRCALPHA)
@@ -233,7 +216,7 @@ def load_char_frames(assets_dir: Path, target_h: int, *, char_folder: str = "PER
         "idle_down": idle_down, "idle_up": idle_up
     }
 
-# ---------- entidades ----------
+# ---------- Entidades ----------
 class Player(pygame.sprite.Sprite):
     def __init__(self, frames: dict[str, list[pygame.Surface] | pygame.Surface], pos, bounds: pygame.Rect,
                  speed: float = 320, anim_fps: float = 8.0):
@@ -245,7 +228,7 @@ class Player(pygame.sprite.Sprite):
         self.anim_dt = 1.0 / max(1.0, anim_fps)
         idle = self.frames.get("idle_down")
         start_img = idle if isinstance(idle, pygame.Surface) else (self.frames["down"][0] if self.frames["down"] else pygame.Surface((40,60), pygame.SRCALPHA))
-        self.image = start_img  # type: ignore[assignment]
+        self.image = start_img 
         self.rect = self.image.get_rect(center=pos)
         self.speed = speed
         self.bounds = bounds
@@ -261,7 +244,6 @@ class Player(pygame.sprite.Sprite):
             l = math.hypot(dx, dy)
             dx, dy = dx / l, dy / l
 
-            # Invertido L/R si tus sprites están al revés
             if abs(dx) >= abs(dy):
                 self.dir = "left" if dx > 0 else "right"
             else:
@@ -274,11 +256,11 @@ class Player(pygame.sprite.Sprite):
             self.anim_timer += dt
             if self.anim_timer >= self.anim_dt:
                 self.anim_timer -= self.anim_dt
-                seq: list[pygame.Surface] = self.frames.get(self.dir, [])  # type: ignore[assignment]
+                seq: list[pygame.Surface] = self.frames.get(self.dir, []) 
                 if seq:
                     self.frame_idx = (self.frame_idx + 1) % len(seq)
 
-            seq: list[pygame.Surface] = self.frames.get(self.dir, [])  # type: ignore[assignment]
+            seq: list[pygame.Surface] = self.frames.get(self.dir, []) 
             if seq:
                 self.image = seq[self.frame_idx % len(seq)]
 
@@ -288,7 +270,7 @@ class Player(pygame.sprite.Sprite):
             if isinstance(idle_img, pygame.Surface):
                 self.image = idle_img
             else:
-                seq: list[pygame.Surface] = self.frames.get(self.dir, [])  # type: ignore[assignment]
+                seq: list[pygame.Surface] = self.frames.get(self.dir, []) 
                 self.image = seq[0] if seq else self.image
             self.frame_idx = 0
 
@@ -326,7 +308,6 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str = "EcoGuardian"
     W, H = screen.get_size()
     background, bg_rect = load_bg_fit(assets_dir, W, H)
 
-    # === Fuente pixel-art grande (si tienes una .ttf en assets la cargará, si no usa SysFont grande) ===
     pixel_font_path = find_by_stem(assets_dir, "pixel") or find_by_stem(assets_dir, "press_start") or find_by_stem(assets_dir, "px")
     if pixel_font_path:
         try:
@@ -336,21 +317,36 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str = "EcoGuardian"
     else:
         pixel_font = pygame.font.SysFont("arial", max(32, int(H * 0.09)), bold=True)
 
-    # Basurero
+    # === Bote de basura (Más Grande) ===
     bin_p = (find_by_stem(assets_dir, "basurero")
              or find_by_stem(assets_dir, "bote_basura")
              or find_by_stem(assets_dir, "trash_bin"))
+    
+    BIN_SCALE = 0.24  
     if bin_p:
-        bin_img = scale_to_width(load_surface(bin_p), int(W * 0.15))
+        bin_img = scale_to_width(load_surface(bin_p), int(W * BIN_SCALE))
     else:
-        bin_img = pygame.Surface((int(W * 0.10), int(W * 0.15)), pygame.SRCALPHA)
+        bin_img = pygame.Surface((int(W * 0.15), int(W * 0.20)), pygame.SRCALPHA)
         pygame.draw.rect(bin_img, (90, 90, 90), bin_img.get_rect(), border_radius=12)
         pygame.draw.rect(bin_img, (255, 255, 255), bin_img.get_rect(), 2, border_radius=12)
+    
     bin_rect = bin_img.get_rect()
-    bin_rect.bottomright = (W - int(W * 0.03), H - int(W * 0.03))
-    BIN_RADIUS = max(36, int(W * 0.03))
+    # === CAMBIO 1: Ajustar posición del bote más a la derecha (reduciendo el margen derecho de 0.03 a 0.015) ===
+    bin_rect.bottomright = (W - int(W * 0.015), H - int(W * 0.03))
+    BIN_RADIUS = max(36, int(W * 0.05))
 
-    # === palomita en el bote (imagen del usuario: basurita_entregada.png) ===
+    # === Flecha indicadora ===
+    arrow_img = None
+    arrow_p = find_by_stem(assets_dir, "flecha") or find_by_stem(assets_dir, "arrow")
+    if arrow_p:
+         arrow_img = scale_to_width(load_surface(arrow_p), int(W * 0.06))
+    else:
+         arrow_surf = pygame.Surface((60, 60), pygame.SRCALPHA)
+         pygame.draw.polygon(arrow_surf, (0, 0, 0), [(10, 10), (50, 10), (30, 50)])
+         pygame.draw.polygon(arrow_surf, (255, 220, 50), [(14, 14), (46, 14), (30, 44)])
+         arrow_img = scale_to_width(arrow_surf, int(W * 0.06))
+
+    # === Palomita en el bote ===
     palomita_img = None
     p = find_by_stem(assets_dir, "basurita_entregada")
     PALOMITA_DURATION = 1.2
@@ -361,17 +357,15 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str = "EcoGuardian"
         except Exception:
             palomita_img = None
 
-    # Contador personalizado: imagen 'contador_basura' (carga opcional)
+    # Contador personalizado
     contador_img = None
     contador_rect = None
     contador_path = find_by_stem(assets_dir, "contador_basura")
     if contador_path:
         try:
             contador_img = load_surface(contador_path)
-            # Escalar para que quede proporcional al ancho de pantalla
             contador_img = scale_to_width(contador_img, int(W * 0.12))
             contador_rect = contador_img.get_rect()
-            # lo posicionaremos más abajo del margen, centrado horizontalmente
             margin_top = int(H * 0.02)
             contador_rect.midtop = (W // 2, margin_top)
         except Exception:
@@ -394,8 +388,6 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str = "EcoGuardian"
         trash_group.add(Trash(img, (x, y), int(W * 0.035)))
 
     # Personaje
-    # === ¡AQUÍ ESTÁ LA CORRECCIÓN! ===
-    # Pasa la variable 'personaje' (que puede ser "PERSONAJE M") a la función.
     frames = load_char_frames(assets_dir, target_h=int(H * 0.14), char_folder=personaje)
     player = Player(frames, (int(W * 0.16), int(H * 0.75)), pygame.Rect(0, 0, W, H), speed=320, anim_fps=8.0)
 
@@ -408,43 +400,35 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str = "EcoGuardian"
     paused = False
     t = 0.0
 
-    # === NUEVOS ELEMENTOS VISUALES DE INTERACCIÓN ===
+    # Interactivos visuales
     popup_font = pygame.font.SysFont("arial", 28, bold=True)
     small_font = pygame.font.SysFont("arial", 20, bold=True)
-    show_message = ""         # texto a mostrar temporalmente
-    message_timer = 0.0       # tiempo restante del mensaje (segundos)
-    message_duration = 1.5    # duración por defecto para mensajes (segundos)
+    show_message = "" 
+    message_timer = 0.0 
+    message_duration = 1.5 
 
-    # icono "E" (fondo + letra)
     icon_e_letter = popup_font.render("E", True, (255, 255, 255))
     icon_bg = pygame.Surface((icon_e_letter.get_width() + 18, icon_e_letter.get_height() + 12), pygame.SRCALPHA)
     pygame.draw.rect(icon_bg, (0, 0, 0, 180), icon_bg.get_rect(), border_radius=8)
     icon_bg.blit(icon_e_letter, icon_e_letter.get_rect(center=icon_bg.get_rect().center))
 
-    # palomita (se renderiza con fuente grande en verde) - fallback para efecto si no hay imagen
     check_font = pygame.font.SysFont("arial", 72, bold=True)
     check_surf_base = check_font.render("✓", True, (40, 180, 40))
     check_surf = check_surf_base.copy()
     check_timer = 0.0
     CHECK_DURATION = 1.0
 
-    # indicador permanente cuando llevas basura (pequeño)
     carry_label = small_font.render("Basura en las manos", True, (255, 255, 255))
     carry_label_bg = pygame.Surface((carry_label.get_width() + 12, carry_label.get_height() + 8), pygame.SRCALPHA)
     pygame.draw.rect(carry_label_bg, (0,0,0,160), carry_label_bg.get_rect(), border_radius=6)
     carry_label_bg.blit(carry_label, carry_label.get_rect(center=carry_label_bg.get_rect().center))
 
-    # =====================================================================
-    # === CAMBIO 1: Lógica del temporizador ===
-    # =====================================================================
+    # Temporizador
     TOTAL_MS = 80_000
-    remaining_ms = TOTAL_MS  # <-- Esta es ahora la variable principal del tiempo
+    remaining_ms = TOTAL_MS 
 
-    # === CAMBIO: Iniciar música de nivel ===
     start_level_music(assets_dir)
 
-
-    # === Panel del temporizador (arriba-derecha, más chico) ===
     timer_panel = None
     for nm in ["temporizador", "timer_panel", "panel_tiempo", "TEMPORAZIDOR"]:
         p = find_by_stem(assets_dir, nm)
@@ -452,9 +436,8 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str = "EcoGuardian"
             timer_panel = load_surface(p)
             break
 
-    # === PAUSA (usa assets/PAUSA/) ===
+    # Pausa
     pausa_dir = assets_dir / "PAUSA"
-
     pausa_panel_img = None
     for nm in ["nivelA 2", "panel_pausa", "pausa_panel"]:
         ptex = find_by_stem(pausa_dir, nm)
@@ -468,12 +451,8 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str = "EcoGuardian"
         "menu_base": None, "menu_hover": None,
     }
 
-    # =====================================================================
-    # === CAMBIO 2: reset_level() ahora resetea 'remaining_ms' y música ===
-    # =====================================================================
     def reset_level():
         nonlocal trash_group, carrying, delivered, remaining_ms, message_timer, check_timer, palomita_timer
-        # === CAMBIO: Añadir 'suspense_music_started' ===
         nonlocal suspense_music_started
         trash_group.empty()
         for i in range(total_trash):
@@ -483,23 +462,18 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str = "EcoGuardian"
             trash_group.add(Trash(img, (x, y), int(W * 0.035)))
         carrying = None
         delivered = 0
-        remaining_ms = TOTAL_MS  # <-- Se resetea el tiempo
-        # === CAMBIO: Reiniciar estado de música ===
+        remaining_ms = TOTAL_MS 
         suspense_music_started = False
         start_level_music(assets_dir)
-        # reset mensajes
         message_timer = 0.0
         check_timer = 0.0
         palomita_timer = 0.0
 
-    # === CAMBIO: Variable de estado para música de suspenso ===
     suspense_music_started = False
 
-    # === Intento: buscar pantalla de LOSE para NIVEL 1P (usuario pidió esto) ===
     pantalla_lose_img = None
     try:
         lose_folder = assets_dir / "PANTALLA LOSE"
-        # el usuario indicó "mayúsculas pero sin el _" y nombre "NIVEL 1P"
         if lose_folder.exists():
             for stem in ["NIVEL 1P", "NIVEL1P", "NIVEL1 P", "NIVEL1P".lower(), "nivel 1p", "NIVEL1P"]:
                 p = find_by_stem(lose_folder, stem)
@@ -514,7 +488,6 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str = "EcoGuardian"
         t += dt
         interact = False
 
-        # actualizar timers visuales
         if message_timer > 0.0:
             message_timer = max(0.0, message_timer - dt)
         if check_timer > 0.0:
@@ -522,37 +495,25 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str = "EcoGuardian"
         if palomita_timer > 0.0:
             palomita_timer = max(0.0, palomita_timer - dt)
 
-        # =====================================================================
-        # === CAMBIO 3: Cálculo de tiempo ELIMINADO de aquí ===
-        # =====================================================================
-
         for e in pygame.event.get():
             if e.type == pygame.QUIT:
-                # === CAMBIO: Detener música ===
                 stop_level_music()
                 return None
             if e.type == pygame.KEYDOWN:
                 if e.key == pygame.K_ESCAPE:
                     play_click(assets_dir)
-                    # === CAMBIO: Detener música ===
                     stop_level_music()
                     return None
                 if e.key == pygame.K_SPACE:
                     paused = not paused
                     play_click(assets_dir)
-                    # No necesitamos lógica extra del timer aquí
                 if e.key in PICK_KEYS:
                     interact = True
 
-        # =====================================================================
-        # === CAMBIO 4: Lógica del juego y actualización del timer y música ===
-        # =====================================================================
         if not paused and remaining_ms > 0:
-            # Restamos el tiempo de este frame
             remaining_ms -= int(dt * 1000)
-            remaining_ms = max(0, remaining_ms) # Nos aseguramos que no baje de 0
+            remaining_ms = max(0, remaining_ms)
 
-            # === CAMBIO: Lógica del trigger de música de suspenso ===
             if remaining_ms <= 30000 and not suspense_music_started:
                 start_suspense_music(assets_dir)
                 suspense_music_started = True
@@ -561,7 +522,6 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str = "EcoGuardian"
 
             if carrying:
                 carrying.carried = True
-                # === CAMBIO: Usar _carry_anchor para la posición (EN LOS BRAZOS) ===
                 ax, ay = _carry_anchor(player, carrying)
                 carrying.rect.center = (ax, ay)
 
@@ -577,7 +537,6 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str = "EcoGuardian"
                     if nearest:
                         carrying = nearest
                         carrying.carried = True
-                        # Mensaje: basura recolectada (fade) -> ahora en pixelart y más abajo
                         show_message = "Basura recolectada"
                         message_timer = message_duration
                         play_click(assets_dir)
@@ -585,42 +544,41 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str = "EcoGuardian"
                     d = math.hypot(player.rect.centerx - bin_rect.centerx,
                                    player.rect.centery - bin_rect.centery)
                     if d <= BIN_RADIUS * 1.2:
-                        # entregar
                         try:
                             trash_group.remove(carrying)
                         except Exception:
-                            # si ya no está en el grupo, ignorar
                             pass
                         carrying = None
                         delivered += 1
-                        # Mostrar palomita y mensaje
                         check_timer = CHECK_DURATION
                         show_message = "¡Basura entregada!"
                         message_timer = message_duration
-                        palomita_timer = PALOMITA_DURATION  # activa la imagen en el bote
+                        palomita_timer = PALOMITA_DURATION
                         play_click(assets_dir)
-
-        # El resto del código (dibujo) se ejecuta siempre
 
         # DIBUJO
         screen.fill((34, 45, 38))
         screen.blit(background, bg_rect)
 
-        # dibujar basurero antes de la palomita
+        # Dibujar basurero
         screen.blit(bin_img, bin_rect)
 
-        # === palomita dentro del bote (imagen cargada) ===
+        # === CAMBIO 2: Flecha Animada sobre el basurero (SOLO SI SE LLEVA BASURA) ===
+        if arrow_img and carrying:
+            # Animación de rebote suave (seno)
+            bounce_offset = 15 * math.sin(t * 4.0)
+            # Posición: Centrada horizontalmente con el bote, y arriba de él
+            arrow_rect = arrow_img.get_rect(midbottom=(bin_rect.centerx, bin_rect.top - 10 + bounce_offset))
+            screen.blit(arrow_img, arrow_rect)
+
         if palomita_img and palomita_timer > 0:
-            # alpha fade out
             alpha = int(255 * (palomita_timer / PALOMITA_DURATION))
             img = palomita_img.copy()
             img.set_alpha(alpha)
             pal_rect = img.get_rect(center=bin_rect.center)
-            # ajustar un poco dentro del borde superior del bote
             pal_rect.y -= int(bin_rect.height * 0.20)
             screen.blit(img, pal_rect)
         elif not palomita_img and check_timer > 0:
-            # si no hay imagen, usa la ✓ de fallback sobre el basurero
             a = int(255 * (check_timer / CHECK_DURATION))
             cs = check_surf.copy()
             cs.set_alpha(a)
@@ -631,28 +589,19 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str = "EcoGuardian"
             tr.draw(screen, t)
         screen.blit(player.image, player.rect)
         if carrying:
-            # el objeto ya fue bliteado con carrying rect al actualizar arriba,
-            # pero igualmente lo bliteamos encima del jugador para asegurar visibilidad.
             screen.blit(carrying.image, carrying.rect)
 
         # HUD
         hud = [
             "Nivel 1 – El Parque (Fácil, con tiempo)",
             "Mover: WASD/Flechas | Recoger/Depositar: E / Enter | Pausa: Espacio",
-            # NOTA: la línea de "Entregadas" se muestra ahora con la imagen contador_basura + NÚMERO arriba.
         ]
         for i, line in enumerate(hud):
             screen.blit(font.render(line, True, (15, 15, 15)), (16 + 2, 25 + 2 + i * 26))
             screen.blit(font.render(line, True, (255, 255, 255)), (16, 25 + i * 26))
 
-
-        # =====================================================================
-        # === DIBUJOS Y EFECTOS NUEVOS: icono "E", mensajes y palomita ===
-        # =====================================================================
-
-        # 1) Icono "E" sobre basura cercana (si el jugador NO lleva basura)
+        # Interacciones visuales
         if not carrying:
-            # buscar la basura más cercana dentro de INTERACT_DIST
             nearest = None
             bestd = 1e9
             for tr in trash_group:
@@ -661,17 +610,14 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str = "EcoGuardian"
                 if d < bestd:
                     bestd = d; nearest = tr
             if nearest and bestd <= INTERACT_DIST:
-                # dibujar icono un poco encima de la basura
                 icon_pos = (nearest.rect.centerx, nearest.rect.top - int(H * 0.03))
                 ib = icon_bg.copy()
-                # hacer un pulso sutil en la opacidad
                 pulse = 0.5 + 0.5 * math.sin(t * 6.0)
                 alpha = int(220 * (0.6 + 0.4 * pulse))
                 ib.set_alpha(alpha)
                 recti = ib.get_rect(center=icon_pos)
                 screen.blit(ib, recti)
 
-                # mensaje pequeño "Recoger: E" cerca de la basura (opcional)
                 recog = small_font.render("Recoger: E", True, (255, 255, 255))
                 recog_bg = pygame.Surface((recog.get_width() + 10, recog.get_height() + 6), pygame.SRCALPHA)
                 pygame.draw.rect(recog_bg, (0,0,0,160), recog_bg.get_rect(), border_radius=6)
@@ -679,21 +625,16 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str = "EcoGuardian"
                 rrect = recog_bg.get_rect(midtop=(nearest.rect.centerx, recti.bottom + 4))
                 screen.blit(recog_bg, rrect)
 
-        # 2) Indicador constante cuando llevas basura: "Basura en las manos" -> ahora SIGUE AL JUGADOR
         if carrying:
-            # dibujar con fondo y leve fade de pulso
             pulse = 0.6 + 0.4 * math.sin(t * 6.0)
             alpha = int(255 * (0.55 + 0.45 * pulse))
             carry_img = carry_label_bg.copy()
             carry_img.set_alpha(alpha)
-            # Ahora sigue al jugador: se posiciona ligeramente por encima del jugador
             cb_rect = carry_img.get_rect(midbottom=(player.rect.centerx, player.rect.top - 6))
             screen.blit(carry_img, cb_rect)
 
-        # 3) Mensajes temporales (fade out usando message_timer) -> FIJOS EN MEDIO
         if message_timer > 0.0 and show_message:
             a = int(255 * (message_timer / message_duration))
-            # render grande pixel
             try:
                 msg_surf = pixel_font.render(show_message, True, (255, 255, 255))
                 shadow = pixel_font.render(show_message, True, (0, 0, 0))
@@ -701,11 +642,9 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str = "EcoGuardian"
                 msg_surf = pixel_font.render(show_message, True, (255, 255, 255))
                 shadow = pixel_font.render(show_message, True, (0, 0, 0))
 
-            # posición: CENTRADO EN PANTALLA (YA NO SIGUE AL JUGADOR)
             msg_x = W // 2
             msg_y = H // 2 + int(H * 0.08)
 
-            # dibujar sombra y texto con alpha (fade)
             shadow_s = shadow.copy()
             shadow_s.set_alpha(a)
             msg_s = msg_surf.copy()
@@ -714,26 +653,21 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str = "EcoGuardian"
             screen.blit(shadow_s, shadow_s.get_rect(center=(msg_x + 4, msg_y + 4)))
             screen.blit(msg_s, msg_s.get_rect(center=(msg_x, msg_y)))
 
-        # 4) Palomita al entregar (fade durante check_timer) - si no hay imagen ya se dibujó arriba sobre el basurero
         if palomita_img is None and check_timer > 0.0:
             a = int(255 * (check_timer / CHECK_DURATION))
             cs = check_surf.copy()
             cs.set_alpha(a)
-            # aparece centrada sobre el basurero (o un poco por encima)
             cs_rect = cs.get_rect(center=(bin_rect.centerx, bin_rect.top - int(H * 0.05)))
             screen.blit(cs, cs_rect)
 
-        # =====================================================================
-        # === CAMBIO 5: El display del timer ahora LEE de 'remaining_ms' ===
-        # =====================================================================
-        remaining = remaining_ms  # <-- 'remaining' es ahora solo para mostrar
-
+        # Timer display
+        remaining = remaining_ms 
         mm = remaining // 1000 // 60
         ss = (remaining // 1000) % 60
         time_str = f"{mm}:{ss:02d}"
 
         margin = int(W * 0.04)
-        panel_w, panel_h = int(W * 0.18), int(H * 0.11)  # más corto y compacto
+        panel_w, panel_h = int(W * 0.18), int(H * 0.11) 
         panel_rect = pygame.Rect(W - margin - panel_w, margin, panel_w, panel_h)
 
         if timer_panel:
@@ -745,7 +679,6 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str = "EcoGuardian"
             pygame.draw.rect(screen, (210, 180, 140), inner, border_radius=8)
             pygame.draw.rect(screen, (30, 20, 15), inner, 3, border_radius=8)
 
-        # número desplazado un poco a la izquierda para no tapar el reloj de arena
         txt = timer_font.render(time_str, True, (20, 15, 10))
         sh  = timer_font.render(time_str, True, (0, 0, 0))
         cx = panel_rect.centerx - int(panel_rect.w * 0.12)
@@ -753,58 +686,34 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str = "EcoGuardian"
         screen.blit(sh,  sh.get_rect(center=(cx + 2, cy + 2)))
         screen.blit(txt, txt.get_rect(center=(cx, cy)))
 
-        # ==========================
-        # ==========================
-# DIBUJAR contador_basura + NÚMERO
-# ==========================
-
+        # Contador display
         if contador_img:
-            # Colocar la imagen ARRIBA-IZQUIERDA
             contador_rect = contador_img.get_rect(topleft=(int(W * 0.015), int(H * 0.10)))
             screen.blit(contador_img, contador_rect)
-
-            # Renderizar número
             num_font = pygame.font.SysFont("arial", max(18, int(H * 0.055)), bold=True)
             num_surf = num_font.render(str(delivered), True, (255, 255, 255))
             num_shadow = num_font.render(str(delivered), True, (0, 0, 0))
-
-            # Número arriba a la izquierda, dentro del contador
             num_rect = num_surf.get_rect(
-            midright=(
-            contador_rect.right - 20,
-            contador_rect.top + contador_rect.height // 2
-         )
-)
-
-        
-            # Sombra
+                midright=(contador_rect.right - 20, contador_rect.top + contador_rect.height // 2)
+            )
             screen.blit(num_shadow, num_shadow.get_rect(center=(num_rect.centerx + 2, num_rect.centery + 2)))
             screen.blit(num_surf, num_rect)
-
         else:
-        # Si no hay imagen, número simple ARRIBA-IZQUIERDA
             num_font = pygame.font.SysFont("arial", max(18, int(H * 0.055)), bold=True)
             num_surf = num_font.render(str(delivered), True, (255, 255, 255))
             num_shadow = num_font.render(str(delivered), True, (0, 0, 0))
-
             num_rect = num_surf.get_rect(topleft=(int(W * 0.02), int(H * 0.02)))
-
             screen.blit(num_shadow, num_shadow.get_rect(center=(num_rect.centerx + 2, num_rect.centery + 2)))
             screen.blit(num_surf, num_rect)
 
-
-        # === PAUSA ===
+        # PAUSA Overlay
         if paused:
-            # Esta sección se dibuja ENCIMA del juego y el HUD
             overlay = pygame.Surface((W, H), pygame.SRCALPHA)
             overlay.fill((0, 0, 0, 160))
             screen.blit(overlay, (0, 0))
-
             panel_w2, panel_h2 = int(W * 0.52), int(H * 0.52)
             panel2 = pygame.Rect(W//2 - panel_w2//2, H//2 - panel_h2//2, panel_w2, panel_h2)
-
             panel_scaled = None
-
             if pausa_panel_img:
                 panel_scaled = pygame.transform.smoothscale(pausa_panel_img, (panel_w2, panel_h2))
                 screen.blit(panel_scaled, panel2)
@@ -813,68 +722,46 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str = "EcoGuardian"
                 inner2 = panel2.inflate(-10, -10)
                 pygame.draw.rect(screen, (210, 180, 140), inner2, border_radius=14)
 
-            # Tamaños y posiciones para los botones
             btn_w, btn_h = int(panel_w2 * 0.80), int(panel_h2 * 0.18)
             cx = panel2.centerx
+            y_cont = panel2.top + int(panel_h2 * 0.40)
+            y_restart = panel2.top + int(panel_h2 * 0.60)
+            y_menu = panel2.top + int(panel_h2 * 0.80)
 
-            y_cont_pct    = 0.40
-            y_restart_pct = 0.60
-            y_menu_pct    = 0.80
-
-            y_cont    = panel2.top + int(panel_h2 * y_cont_pct)
-            y_restart = panel2.top + int(panel_h2 * y_restart_pct)
-            y_menu    = panel2.top + int(panel_h2 * y_menu_pct)
-
-            r_cont    = pygame.Rect(0, 0, btn_w, btn_h); r_cont.center    = (cx, y_cont)
+            r_cont = pygame.Rect(0, 0, btn_w, btn_h); r_cont.center = (cx, y_cont)
             r_restart = pygame.Rect(0, 0, btn_w, btn_h); r_restart.center = (cx, y_restart)
-            r_menu    = pygame.Rect(0, 0, btn_w, btn_h); r_menu.center    = (cx, y_menu)
+            r_menu = pygame.Rect(0, 0, btn_w, btn_h); r_menu.center = (cx, y_menu)
 
-            # Crear botones "recortados" y versiones "hover"
             if pause_button_assets["cont_base"] is None and panel_scaled:
                 try:
-                    # Calcular rects locales (dentro del panel)
-                    r_cont_local    = r_cont.move(-panel2.x, -panel2.y)
+                    r_cont_local = r_cont.move(-panel2.x, -panel2.y)
                     r_restart_local = r_restart.move(-panel2.x, -panel2.y)
-                    r_menu_local    = r_menu.move(-panel2.x, -panel2.y)
-
-                    # Recortar las imágenes base del panel escalado
-                    base_cont    = panel_scaled.subsurface(r_cont_local)
+                    r_menu_local = r_menu.move(-panel2.x, -panel2.y)
+                    base_cont = panel_scaled.subsurface(r_cont_local)
                     base_restart = panel_scaled.subsurface(r_restart_local)
-                    base_menu    = panel_scaled.subsurface(r_menu_local)
-
+                    base_menu = panel_scaled.subsurface(r_menu_local)
                     pause_button_assets["cont_base"] = base_cont
                     pause_button_assets["restart_base"] = base_restart
                     pause_button_assets["menu_base"] = base_menu
-
-                    # Crear versiones "hover" (un 5% más grandes)
-                    hover_w_cont, hover_h_cont = int(r_cont.w * 1.05), int(r_cont.h * 1.05)
-                    hover_w_rest, hover_h_rest = int(r_restart.w * 1.05), int(r_restart.h * 1.05)
-                    hover_w_menu, hover_h_menu = int(r_menu.w * 1.05), int(r_menu.h * 1.05)
-
-                    pause_button_assets["cont_hover"] = pygame.transform.smoothscale(base_cont, (hover_w_cont, hover_h_cont))
-                    pause_button_assets["restart_hover"] = pygame.transform.smoothscale(base_restart, (hover_w_rest, hover_h_rest))
-                    pause_button_assets["menu_hover"] = pygame.transform.smoothscale(base_menu, (hover_w_menu, hover_h_menu))
+                    hwc, hhc = int(r_cont.w * 1.05), int(r_cont.h * 1.05)
+                    hwr, hhr = int(r_restart.w * 1.05), int(r_restart.h * 1.05)
+                    hwm, hhm = int(r_menu.w * 1.05), int(r_menu.h * 1.05)
+                    pause_button_assets["cont_hover"] = pygame.transform.smoothscale(base_cont, (hwc, hhc))
+                    pause_button_assets["restart_hover"] = pygame.transform.smoothscale(base_restart, (hwr, hhr))
+                    pause_button_assets["menu_hover"] = pygame.transform.smoothscale(base_menu, (hwm, hhm))
                 except ValueError:
-                    # Esto puede pasar si los rects están fuera del panel, reseteamos para que no falle
-                    pause_button_assets["cont_base"] = None # Resetea para reintentar
-                    print("Advertencia: No se pudieron crear los subsurfaces de los botones.")
-
+                    pause_button_assets["cont_base"] = None 
 
             mouse = pygame.mouse.get_pos()
             click = pygame.mouse.get_pressed()[0]
 
-            # Función draw_btn (Efecto de Escala)
             def draw_btn(base_rect: pygame.Rect, hover_img: pygame.Surface) -> bool:
                 hov = base_rect.collidepoint(mouse)
                 if hov and hover_img:
-                    # Dibujar la imagen hover, centrada sobre el botón original
                     hover_rect = hover_img.get_rect(center=base_rect.center)
                     screen.blit(hover_img, hover_rect)
-
-                # Devuelve True si se hace clic mientras se está sobre el botón
                 return hov and click
 
-            # Llamadas a draw_btn actualizadas
             if draw_btn(r_cont, pause_button_assets["cont_hover"]):
                 play_click(assets_dir)
                 paused = False
@@ -884,14 +771,10 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str = "EcoGuardian"
                 paused = False
             elif draw_btn(r_menu, pause_button_assets["menu_hover"]):
                 play_click(assets_dir)
-                # === CAMBIO: Detener música ===
                 stop_level_music()
                 return None
 
-
-        # =====================================================================
-        # === CAMBIO 6: Condición de victoria ahora usa 'remaining_ms' ===
-        # =====================================================================
+        # === Lógica de VICTORIA ===
         if not paused and delivered >= total_trash:
             win_img = None
             p = find_by_stem(assets_dir, "win_level1")
@@ -909,18 +792,31 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str = "EcoGuardian"
                     elapsed2 += dt2
                     for ev in pygame.event.get():
                         if ev.type == pygame.QUIT:
-                            # === CAMBIO: Detener música ===
                             stop_level_music()
-                            return {"estado": "completado", "recolectadas": total_trash}
+                            try:
+                                import play
+                                play.run(screen, assets_dir)
+                            except ImportError:
+                                pass
+                            return
                         if ev.type == pygame.KEYDOWN or (ev.type == pygame.MOUSEBUTTONDOWN and ev.button == 1):
                             play_click(assets_dir)
-                            # === CAMBIO: Detener música ===
                             stop_level_music()
-                            return {"estado": "completado", "recolectadas": total_trash}
-                # === CAMBIO: Detener música ===
+                            try:
+                                import play
+                                play.run(screen, assets_dir)
+                            except ImportError:
+                                pass
+                            return
                 stop_level_music()
-                return {"estado": "completado", "recolectadas": total_trash}
+                try:
+                    import play
+                    play.run(screen, assets_dir)
+                except ImportError:
+                    pass
+                return 
 
+            # Fallback Victoria
             overlay = pygame.Surface((W, H), pygame.SRCALPHA)
             overlay.fill((0, 120, 0, 90))
             screen.blit(overlay, (0, 0))
@@ -928,32 +824,32 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str = "EcoGuardian"
             screen.blit(wtxt, wtxt.get_rect(center=(W // 2, H // 2 - 10)))
             pygame.display.flip()
             pygame.time.delay(1200)
-            # === CAMBIO: Detener música ===
             stop_level_music()
-            return {"estado": "completado", "recolectadas": total_trash}
+            try:
+                import play
+                play.run(screen, assets_dir)
+            except ImportError:
+                pass
+            return
 
-        # Comprueba la derrota usando 'remaining_ms'
+        # === Lógica de DERROTA (Tiempo agotado) ===
         if remaining_ms <= 0 and delivered < total_trash:
-            # --- NUEVO: mostrar la pantalla de "LOSE" del usuario si existe ---
             stop_level_music()
             if pantalla_lose_img:
                 try:
-                    # escalar a pantalla completa manteniendo la proporción (fit & cover)
                     iw, ih = pantalla_lose_img.get_size()
-                    ratio = max(W / iw, H / ih)  # cover-like to fill screen (keeps aspect but may crop)
+                    ratio = max(W / iw, H / ih) 
                     new_w, new_h = int(iw * ratio), int(ih * ratio)
                     scaled = pygame.transform.smoothscale(pantalla_lose_img, (new_w, new_h))
                     rect = scaled.get_rect(center=(W//2, H//2))
                     screen.blit(scaled, rect)
                 except Exception:
-                    # fallback a mensaje de texto si algo falla
                     overlay = pygame.Surface((W, H), pygame.SRCALPHA)
                     overlay.fill((0, 0, 0, 160))
                     screen.blit(overlay, (0, 0))
                     msg = big.render("¡Tiempo agotado!", True, (255, 255, 255))
                     screen.blit(msg, msg.get_rect(center=(W // 2, H // 2 - 10)))
             else:
-                # Si no existe la imagen, usar el texto clásico
                 overlay = pygame.Surface((W, H), pygame.SRCALPHA)
                 overlay.fill((0, 0, 0, 160))
                 screen.blit(overlay, (0, 0))
@@ -962,7 +858,13 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str = "EcoGuardian"
 
             pygame.display.flip()
             pygame.time.delay(1200)
-            # === CAMBIO: Detener música (ya detenida arriba) ===
-            return {"estado": "tiempo_agotado", "recolectadas": delivered}
+            
+            # === REDIRECCIÓN A PLAY.PY ===
+            try:
+                import play
+                play.run(screen, assets_dir)
+            except ImportError:
+                pass
+            return 
 
         pygame.display.flip()
