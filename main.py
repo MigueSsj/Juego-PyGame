@@ -7,7 +7,6 @@ import config # IMPORTANTE: Importar el config para traducciones
 from pathlib import Path
 from audio_shared import start_menu_music, ensure_menu_music_running, play_click
 
-
 pygame.init()
 
 # ===== RUTAS / CONFIG =====
@@ -15,16 +14,132 @@ BASE_DIR = Path(__file__).resolve().parent
 os.chdir(BASE_DIR)
 ASSETS = BASE_DIR / "assets"
 
-# === STEMS (Corregido 'inst') ===
+# === STEMS ===
 STEMS = {
     "bg": "Background_f",
     "title": "titulo_juego",
     "play": "btn_play",
     "opc": "btn_opc",
-    "inst": "btn_instrucciones", # ✅ CORREGIDO
+    "inst": "btn_instrucciones", 
     "tut": "Tutorial", 
 }
 SHOW_DEBUG_BORDERS = False
+
+# ==========================================================
+# ✅ FUNCIÓN PARA REPRODUCIR VIDEO (MANUAL / ROBUSTA)
+# ==========================================================
+def reproducir_intro(screen, assets_dir):
+    """
+    Reproduce 'intro.mp4' dibujando los frames manualmente en Pygame.
+    Esto evita el error de [WinError 2] por falta de ffplay.
+    """
+    video_path = assets_dir / "intro.mp4"
+    
+    if not video_path.exists():
+        print(f"[INFO] No se encontró {video_path}, saltando intro.")
+        return
+
+    try:
+        # Intentamos importar MoviePy (compatible con v1 y v2)
+        try:
+            from moviepy import VideoFileClip
+        except ImportError:
+            from moviepy.editor import VideoFileClip
+        
+        print("[INFO] Cargando video de introducción...")
+        
+        # Cargar el video
+        clip = VideoFileClip(str(video_path))
+        
+        # --- AJUSTE DE TAMAÑO Y POSICIÓN ---
+        screen_w, screen_h = screen.get_size()
+        video_w, video_h = clip.size
+        
+        # Calcular escala para que quepa en pantalla (85% del tamaño disponible)
+        # manteniendo la relación de aspecto original para no perder calidad
+        scale = min(screen_w / video_w, screen_h / video_h) * 0.85
+        new_w = int(video_w * scale)
+        new_h = int(video_h * scale)
+        
+        # Calcular posición para centrar
+        pos_x = (screen_w - new_w) // 2
+        pos_y = (screen_h - new_h) // 2
+        
+        if hasattr(clip, "resized"): # MoviePy v2
+            clip = clip.resized(new_size=(new_w, new_h))
+        else: # MoviePy v1
+            clip = clip.resize(newsize=(new_w, new_h))
+        
+        # --- REPRODUCTOR MANUAL ---
+        # Extraemos el audio a un archivo temporal para que Pygame lo toque
+        # Esto evita depender de herramientas externas para el audio
+        audio_temp = assets_dir / "temp_intro_audio.mp3"
+        
+        if clip.audio:
+            # logger=None evita que llene la consola de barras de carga
+            print("[INFO] Procesando audio del video...")
+            try:
+                clip.audio.write_audiofile(str(audio_temp), logger=None)
+                pygame.mixer.music.load(str(audio_temp))
+                pygame.mixer.music.play()
+            except Exception as e:
+                print(f"⚠️ No se pudo cargar el audio del video: {e}")
+
+        clock = pygame.time.Clock()
+        fps = clip.fps
+        running = True
+        
+        print("[INFO] Reproduciendo video...")
+        
+        # Iteramos sobre cada cuadro del video
+        start_ticks = pygame.time.get_ticks()
+        
+        for frame in clip.iter_frames(fps=fps, dtype="uint8"):
+            if not running:
+                break
+            
+            # Manejo de eventos (para poder saltar el video con click o tecla)
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    running = False
+                    pygame.quit()
+                    return
+                if event.type == pygame.KEYDOWN or event.type == pygame.MOUSEBUTTONDOWN:
+                    running = False # Saltar intro
+            
+            # Convertir el frame de MoviePy (numpy array) a Pygame Surface
+            # swapaxes es necesario porque MoviePy usa (y, x) y Pygame (x, y)
+            video_surf = pygame.surfarray.make_surface(frame.swapaxes(0, 1))
+            
+            # 1. Llenar fondo de negro
+            screen.fill((0, 0, 0))
+            # 2. Dibujar video centrado
+            screen.blit(video_surf, (pos_x, pos_y))
+            pygame.display.flip()
+            
+            # Controlar la velocidad (FPS)
+            clock.tick(fps)
+        
+        # Limpieza
+        pygame.mixer.music.stop()
+        pygame.mixer.music.unload()
+        clip.close()
+        
+        # Borrar el archivo de audio temporal
+        if audio_temp.exists():
+            try:
+                os.remove(audio_temp)
+            except:
+                pass
+        
+        # Restaurar título
+        pygame.display.set_caption("Guardianes del Planeta")
+        
+    except ImportError:
+        print("⚠️ [AVISO] Instala moviepy para ver el intro: pip install moviepy")
+    except Exception as e:
+        print(f"⚠️ [ERROR] Saltando intro por error interno: {e}")
+
 
 # ===== HELPERS IMG =====
 def find_by_stem(stem: str) -> Path | None:
@@ -71,14 +186,24 @@ def scale_to_width(img: pygame.Surface, new_w: int) -> pygame.Surface:
     return pygame.transform.smoothscale(img, (new_w, new_h))
 
 # ===== CARGA + VENTANA =====
-# Cargamos el idioma guardado antes de cargar imágenes
+# 1. Cargar idioma desde opciones
 opciones.load_lang(ASSETS)
+# 2. Sincronizar config.py con lo que cargó opciones
+if hasattr(opciones, "IDIOMA_ACTUAL"):
+    config.cambiar_idioma(opciones.IDIOMA_ACTUAL)
 
 bg_raw, _ = load_raw(STEMS["bg"])
 W, H = bg_raw.get_size()
 screen = pygame.display.set_mode((W, H))
 pygame.display.set_caption("Guardianes del Planeta")
 clock = pygame.time.Clock()
+
+# ==========================================================
+# 🎬 REPRODUCIR INTRO ANTES DE CARGAR EL MENÚ
+# ==========================================================
+reproducir_intro(screen, ASSETS)
+
+# Continuar carga normal...
 background = bg_raw.convert()
 
 # Variables globales para UI
@@ -106,7 +231,6 @@ def reload_ui():
     global title_img, btn_jugar, btn_opc, btn_inst, btn_tut
     global btn_jugar_h, btn_opc_h, btn_inst_h, btn_tut_h
     global rect_jugar, rect_opc, rect_inst, rect_tut, title_w, title_h
-    # TITLE_TOP se accede globalmente
 
     # Cargar imágenes (load_raw usa config)
     title_raw, title_path = load_raw(STEMS["title"])
@@ -122,7 +246,7 @@ def reload_ui():
     b_inst = inst_raw.convert_alpha() if inst_path.suffix.lower()==".png" else inst_raw.convert()
     b_tut = tut_raw.convert_alpha() if tut_path.suffix.lower()==".png" else tut_raw.convert()
 
-    # ===== ESCALADOS (Tus valores originales) =====
+    # ===== ESCALADOS =====
     TITLE_SCALE = 1.00
     title_img = sscale(t_img, TITLE_SCALE)
     title_w, title_h = title_img.get_size()
@@ -140,7 +264,7 @@ def reload_ui():
     btn_inst_h = scale_to_width(btn_inst, int(TARGET_BTN_W * HOVER_SCALE))
     btn_tut_h = scale_to_width(btn_tut, int((TARGET_BTN_W * 0.8) * HOVER_SCALE))
 
-    # ===== LAYOUT (Tus posiciones originales) =====
+    # ===== LAYOUT =====
     GAP_TITLE_BTN = 20
     GAP_BOTONES = 15 
 
@@ -168,20 +292,21 @@ def reload_ui():
 reload_ui()
 
 # ===== INICIA MÚSICA DE MENÚ =====
+# Se inicia DESPUÉS del video para que no se mezclen los audios
 start_menu_music(ASSETS)
 
 # ===== ANIM =====
 scroll_x = 0
 SCROLL_SPEED = 2
 t = 0
-FLOAT_AMP = 8 # Se define aquí, fuera de los helpers
+FLOAT_AMP = 8
 FLOAT_SPEED = 0.08
 
 # Helper para lanzar niveles según número/dificultad
 def _load_level_module(nivel: int, dificultad: str):
     if nivel == 1:
         if dificultad == "facil":
-            import levels.nivel1_facil as mod
+            import levels.nivel1_facilitopapa as mod
             return mod
         else:
             import levels.nivel1_dificil as mod
@@ -221,7 +346,6 @@ while running:
     screen.blit(background, (scroll_x + W, 0))
 
     y_float = int(FLOAT_AMP * math.sin(t * FLOAT_SPEED))
-    # Aquí es donde daba el error, ahora TITLE_TOP ya está definido globalmente
     screen.blit(title_img, ((W - title_w)//2, TITLE_TOP + y_float))
 
     # Botones (hover)
@@ -250,7 +374,7 @@ while running:
         # --- BOTÓN JUGAR ---
         if rj.collidepoint(mouse_pos):
             play_click(ASSETS)
-            result = play.run(screen, ASSETS) # ESTA ES LA LÍNEA CORREGIDA
+            result = play.run(screen, ASSETS)
             ensure_menu_music_running(ASSETS)
 
             if isinstance(result, dict) and "nivel" in result and "dificultad" in result:
@@ -345,9 +469,12 @@ while running:
         # --- BOTÓN OPCIONES ---
         elif ro.collidepoint(mouse_pos):
             play_click(ASSETS)
-            # Ejecutamos opciones
             _ = opciones.run(screen, ASSETS)
-            # === MAGIA: RECARGAMOS IMÁGENES AL VOLVER ===
+            
+            # Sincronizar idioma
+            if hasattr(opciones, "IDIOMA_ACTUAL"):
+                config.cambiar_idioma(opciones.IDIOMA_ACTUAL)
+            
             reload_ui() 
             ensure_menu_music_running(ASSETS)
             pygame.display.flip()
@@ -368,7 +495,9 @@ while running:
         # --- BOTÓN TUTORIAL ---
         elif rt.collidepoint(mouse_pos):
             play_click(ASSETS)
+            # Tutorial lo busca solo en config
             tutorial.run(screen, ASSETS, personaje="PERSONAJE H") 
+            
             ensure_menu_music_running(ASSETS)
             pygame.display.flip()
             clock.tick(60)

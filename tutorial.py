@@ -2,12 +2,12 @@ from __future__ import annotations
 import pygame, math, random, re
 from pathlib import Path
 from typing import Optional, List, Tuple, Dict, Any
+import config  # <--- IMPORTANTE: Importamos la configuración global
 
 # ======================================================================
-# === FUNCIONES BÁSICAS Y CLASES (Completas y tomadas de tus niveles)
+# === FUNCIONES BÁSICAS Y CLASES
 # ======================================================================
 
-# --- Importar música (con fallback) ---
 try:
     from audio_shared import play_sfx, start_level_music, start_suspense_music, stop_level_music
 except ImportError:
@@ -16,10 +16,9 @@ except ImportError:
     def start_suspense_music(assets_dir: Path): pass
     def stop_level_music(): pass
 
-# --- Constantes para Nivel 3 (Tutorial) ---
 TIEMPO_PARA_REPARAR_TUTORIAL = 1 
 
-# === FUNCIONES DE AYUDA (Sin cambios) ===
+# === FUNCIONES DE AYUDA ===
 def find_by_stem(assets_dir: Path, stem: str) -> Optional[Path]:
     exts = (".png", ".jpg", ".jpeg")
     for ext in exts:
@@ -32,7 +31,11 @@ def find_by_stem(assets_dir: Path, stem: str) -> Optional[Path]:
     return min(cands, key=lambda p: len(p.name)) if cands else None
 
 def load_image(assets_dir: Path, stems: List[str]) -> Optional[pygame.Surface]:
-    for stem in stems:
+    # Intentamos traducir los stems usando config.py
+    translated_stems = [config.obtener_nombre(s) for s in stems]
+    all_stems = translated_stems + stems
+    
+    for stem in all_stems:
         p = find_by_stem(assets_dir, stem)
         if p:
             img = pygame.image.load(str(p))
@@ -70,7 +73,6 @@ def _carry_anchor(player: pygame.sprite.Sprite, carrying_rect: pygame.Rect) -> t
         cy += int(rect.height * 0.04)
     return cx, cy
 
-# === LÓGICA DE DIBUJO DE TECLAS (Sin cambios) ===
 def draw_key_icon(surf: pygame.Surface, key_char: str, pos: Tuple[int, int], size: int, color: Tuple[int, int, int] = (255, 255, 255)):
     key_surf = pygame.Surface((size, size), pygame.SRCALPHA)
     pygame.draw.rect(key_surf, (30, 30, 30), key_surf.get_rect(), border_radius=4)
@@ -83,11 +85,11 @@ def draw_key_icon(surf: pygame.Surface, key_char: str, pos: Tuple[int, int], siz
     
     surf.blit(key_surf, key_surf.get_rect(center=pos))
 
-def draw_movement_hud(surf: pygame.Surface, center_x: int, center_y: int, key_size: int, font: pygame.font.Font):
+def draw_movement_hud(surf: pygame.Surface, center_x: int, center_y: int, key_size: int, font: pygame.font.Font, text_label: str):
     KEY_S = key_size
     GAP = KEY_S + 5
     
-    title_text = font.render("MOVERSE:", True, (255, 255, 255))
+    title_text = font.render(text_label, True, (255, 255, 255))
     surf.blit(title_text, title_text.get_rect(midbottom=(center_x + GAP*1.75, center_y - KEY_S * 1.5)))
 
     draw_key_icon(surf, "W", (center_x, center_y - GAP), KEY_S)
@@ -101,8 +103,7 @@ def draw_movement_hud(surf: pygame.Surface, center_x: int, center_y: int, key_si
     draw_key_icon(surf, "▼", (center_x + ARROW_GAP_X, center_y), KEY_S, (100, 200, 255))
     draw_key_icon(surf, "▶", (center_x + ARROW_GAP_X + GAP, center_y), KEY_S, (100, 200, 255))
 
-
-# === CLASES DE OBJETOS (Sin cambios) ===
+# === CLASES DE OBJETOS ===
 
 class Trash(pygame.sprite.Sprite):
     def __init__(self, img: pygame.Surface, pos, scale_w: int):
@@ -166,7 +167,7 @@ class Hole:
             tree_midbottom_y = cy + offset_y 
             surf.blit(arbol_img, arbol_img.get_rect(midbottom=(cx, tree_midbottom_y)))
 
-# CLASE PLAYER (Con corrección de movimiento FINAL)
+# CLASE PLAYER
 class Player(pygame.sprite.Sprite):
     def __init__(self, frames: dict[str, list[pygame.Surface] | pygame.Surface],
                  pos, bounds: pygame.Rect, speed: float = 320, anim_fps: float = 8.0):
@@ -199,9 +200,8 @@ class Player(pygame.sprite.Sprite):
         if moving:
             l = math.hypot(dx, dy);  dx, dy = dx / l, dy / l
             
-            # CORRECCIÓN FINAL: Asignación invertida (derecha < 0) para que coincida con tus assets
             if abs(dx) >= abs(dy): 
-                self.dir = "left" if dx > 0 else "right" # Si va a la derecha (dx>0), usa el frame 'left'.
+                self.dir = "left" if dx > 0 else "right" 
             else: 
                 self.dir = "down" if dy > 0 else "up"
             
@@ -248,8 +248,7 @@ class Player(pygame.sprite.Sprite):
             anchor_rect = self.carrying_image.get_rect(center=(cx, cy))
             surf.blit(self.carrying_image, anchor_rect)
 
-
-# Función de carga de frames de personaje (Sin cambios)
+# Función de carga de frames
 def load_char_frames(assets_dir: Path, target_h: int, *, char_folder: str = "PERSONAJE H") -> dict[str, list[pygame.Surface] | pygame.Surface]:
     char_dir = assets_dir / char_folder
     
@@ -297,7 +296,6 @@ def load_char_frames(assets_dir: Path, target_h: int, *, char_folder: str = "PER
     if not walk_left_seq: walk_left_seq = [pygame.transform.flip(walk_right_seq[0], True, False) if walk_right_seq else walk_down_seq[0]]
     if not walk_right_seq: walk_right_seq = [pygame.transform.flip(walk_left_seq[0], True, False) if walk_left_seq else walk_down_seq[0]]
 
-
     frames_dict["down"] = walk_down_seq
     frames_dict["up"] = walk_up_seq
     frames_dict["left"] = walk_left_seq
@@ -336,17 +334,12 @@ def load_bg_fit(assets_dir: Path, W: int, H: int, stems: List[str]) -> tuple[pyg
     rect = scaled.get_rect(center=(W // 2, H // 2))
     return scaled, rect
 
-
-# (FIN DE PARTE 1)
-# (INICIO DE PARTE 2)
-
 # ======================================================================
-# === FUNCIÓN PRINCIPAL DEL TUTORIAL (FLUJO DE FASES)
+# === FUNCIÓN PRINCIPAL DEL TUTORIAL
 # ======================================================================
 
-# --- COLORES ---
 BLANCO = (255, 255, 255); GRIS = (100, 100, 100); VERDE = (0, 200, 0)
-ROJO_OSCURO = (100, 0, 0)
+ROJO_OSCURO = (180, 0, 0); ROJO_ALERTA = (255, 50, 50); AMARILLO = (255, 215, 0)
 
 def run(screen: pygame.Surface, assets_dir: Path, personaje: str = "EcoGuardian", dificultad: str = "Fácil"):
     pygame.font.init()
@@ -356,6 +349,7 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str = "EcoGuardian"
     # --- Fuentes ---
     font = pygame.font.SysFont("arial", 26, bold=True)
     small_font = pygame.font.SysFont("arial", 20, bold=True)
+    timer_font = pygame.font.SysFont("arial", 40, bold=True) 
     
     # --- Carga de Assets del Nivel 3 ---
     bg_roto = load_image(assets_dir, ["original", "img_3_roto", "nivel3_plaza_roto"])
@@ -417,11 +411,9 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str = "EcoGuardian"
     # Objetos para Fase 1
     seed_obj: Optional[Seed] = None
     hole_obj: Optional[Hole] = None
-    carrying_seed = False           
+    carrying_seed = False          
     
     # Objetos para Fase 2 (Reparación)
-    
-    # *** CORRECCIÓN: Definición de la zona BR (Abajo Derecha) ***
     repair_zone_key = "BR" 
     zones_map = {
         "BR": pygame.Rect(int(W * 0.66), int(H * 0.55), int(W * 0.30), int(H * 0.40)) 
@@ -429,6 +421,10 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str = "EcoGuardian"
     estado_reparacion = { "BR": False }
     reparando_actualmente = None
     progreso_reparacion = 0
+    
+    # --- TEMPORIZADOR DEL NIVEL 3 (50 Segundos) ---
+    level_timer = 50.0  
+    game_over = False
     
     # Mensajes
     current_tutorial_msg = ""
@@ -462,16 +458,20 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str = "EcoGuardian"
             if e.type == pygame.KEYDOWN:
                 if e.key == pygame.K_ESCAPE:
                     stop_level_music(); return "menu"
-                if e.key in INTERACT_KEYS:
-                    interact = True
-                if e.key == pygame.K_r: # Tecla de Reparación del Nivel 3
-                    reparar_key_pressed = True
+                
+                # Solo procesar input si no es Game Over
+                if not game_over:
+                    if e.key in INTERACT_KEYS:
+                        interact = True
+                    if e.key == pygame.K_r: # Tecla de Reparación del Nivel 3
+                        reparar_key_pressed = True
 
         # ----------------------------------------------------------------------
         # LÓGICA DE JUEGO (Actualización)
         # ----------------------------------------------------------------------
 
-        player.handle_input(dt_sec)
+        if not game_over:
+            player.handle_input(dt_sec)
         
         if carrying:
             ax, ay = _carry_anchor(player, carrying.rect)
@@ -486,7 +486,7 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str = "EcoGuardian"
             hole_obj.update(dt_ms)
 
         # --- Interacción ---
-        if interact:
+        if interact and not game_over:
             if tutorial_phase == 0:
                 # FASE 0: BASURA
                 if not carrying:
@@ -495,7 +495,7 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str = "EcoGuardian"
                     if d <= INTERACT_DIST and not trash_obj.is_delivered:
                         carrying = trash_obj
                         carrying.carried = True
-                        set_message("¡Basura recogida! Llévala al bote.", 1.5)
+                        set_message(config.obtener_nombre("txt_tutorial_msg1"), 1.5)
                         play_sfx("sfx_pick_up", assets_dir)
                 else:
                     d = math.hypot(player.rect.centerx - bin_rect.centerx,
@@ -504,7 +504,7 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str = "EcoGuardian"
                         trash_obj.is_delivered = True
                         carrying = None
                         
-                        set_message("¡FELICIDADES! Siguiente: Plantación.", 4.0)
+                        set_message(config.obtener_nombre("txt_tutorial_msg2"), 4.0)
                         play_sfx("sfx_win", assets_dir) 
                         tutorial_phase = 1
                         
@@ -523,7 +523,7 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str = "EcoGuardian"
                         seed_obj.taken = True
                         carrying_seed = True
                         player.carrying_image = img_semilla
-                        set_message("Semilla recogida. ¡Plántala en el hueco!", 2.0)
+                        set_message(config.obtener_nombre("txt_tutorial_msg3"), 2.0)
                         play_sfx("sfx_pick_seed", assets_dir)
                 else:
                     d = math.hypot(player.rect.centerx - hole_obj.rect.centerx,
@@ -532,15 +532,16 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str = "EcoGuardian"
                         carrying_seed = False
                         player.carrying_image = None
                         hole_obj.start_grow()
-                        set_message("¡Plantación iniciada! Espera a que crezca el árbol.", 3.0)
+                        set_message(config.obtener_nombre("txt_tutorial_msg4"), 3.0)
                         play_sfx("sfx_plant", assets_dir)
             
             # --- Fase 3 (Conclusión) se activa en la lógica de reparación ---
 
         # --- Lógica de Transición de Fase 1 a Fase 2 ---
         if tutorial_phase == 1 and hole_obj and hole_obj.has_tree:
-             set_message("¡Árbol plantado! Última prueba: Reparación. Acércate al edificio.", 4.0)
+             set_message(config.obtener_nombre("txt_tutorial_msg5"), 4.0)
              tutorial_phase = 2 
+             level_timer = 50.0 # REINICIAR TIMER PARA NIVEL 3
              
              # Transición a Fase 2
              background = bg_roto
@@ -549,30 +550,46 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str = "EcoGuardian"
              
         # --- LÓGICA ESPECÍFICA DE REPARACIÓN (FASE 2) ---
         if tutorial_phase == 2:
-            zona_activa = None
-            if not estado_reparacion[repair_zone_key]:
-                if player.rect.colliderect(zones_map[repair_zone_key]):
-                     zona_activa = repair_zone_key
             
-            if zona_activa and reparar_key_pressed:
-                reparando_actualmente = zona_activa
-                progreso_reparacion += 1
+            # 1. Actualizar Timer
+            if not game_over and not estado_reparacion[repair_zone_key]:
+                level_timer -= dt_sec
                 
-                # REPARACIÓN INSTANTÁNEA PARA EL TUTORIAL
-                if progreso_reparacion >= TIEMPO_PARA_REPARAR_TUTORIAL:
-                    estado_reparacion[zona_activa] = True
-                    progreso_reparacion = 0
-                    reparando_actualmente = None
-                    play_sfx("sfx_win", assets_dir) 
+                # CONDICIÓN DE DERROTA (TIEMPO AGOTADO)
+                if level_timer <= 0:
+                    level_timer = 0
+                    game_over = True
+                    play_sfx("sfx_lose", assets_dir) 
+                    set_message(config.obtener_nombre("txt_tutorial_fail"), 5.0)
+                    # Forzar salida a fase final de derrota tras el mensaje
+                    tutorial_phase = 99 
+
+            # 2. Lógica de Reparación
+            if not game_over:
+                zona_activa = None
+                if not estado_reparacion[repair_zone_key]:
+                    if player.rect.colliderect(zones_map[repair_zone_key]):
+                         zona_activa = repair_zone_key
+                
+                if zona_activa and reparar_key_pressed:
+                    reparando_actualmente = zona_activa
+                    progreso_reparacion += 1
                     
-                    # PASAR A FASE 3 (FIN)
-                    set_message("¡TRES PRUEBAS SUPERADAS! Tutorial completo. Estás listo para la misión.", 5.0)
-                    tutorial_phase = 3
-            elif not reparar_key_pressed:
-                progreso_reparacion = 0; reparando_actualmente = None
+                    # REPARACIÓN INSTANTÁNEA PARA EL TUTORIAL
+                    if progreso_reparacion >= TIEMPO_PARA_REPARAR_TUTORIAL:
+                        estado_reparacion[zona_activa] = True
+                        progreso_reparacion = 0
+                        reparando_actualmente = None
+                        play_sfx("sfx_win", assets_dir) 
+                        
+                        # PASAR A FASE 3 (FIN)
+                        set_message(config.obtener_nombre("txt_tutorial_msg6"), 5.0)
+                        tutorial_phase = 3
+                elif not reparar_key_pressed:
+                    progreso_reparacion = 0; reparando_actualmente = None
             
-        # --- Lógica de salida al terminar el tutorial (Fase 3) ---
-        if tutorial_phase == 3 and message_timer <= 0.0:
+        # --- Lógica de salida al terminar el tutorial (Fase 3 o 99) ---
+        if (tutorial_phase == 3 or tutorial_phase == 99) and message_timer <= 0.0:
             running = False
 
         # ----------------------------------------------------------------------
@@ -588,7 +605,10 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str = "EcoGuardian"
             trash_obj.draw(screen, t) 
             
             # HUD y Flechas...
-            if not carrying and not trash_obj.is_delivered: draw_movement_hud(screen, W // 2 - 100, H // 4, 30, font)
+            if not carrying and not trash_obj.is_delivered: 
+                # Se pasa el texto traducido al HUD desde config
+                draw_movement_hud(screen, W // 2 - 100, H // 4, 30, font, config.obtener_nombre("txt_movimiento"))
+            
             if carrying and not trash_obj.is_delivered:
                 target_center = bin_rect.center; player_center = player.rect.center
                 angle = math.atan2(target_center[1] - player_center[1], target_center[0] - player_center[0])
@@ -600,11 +620,11 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str = "EcoGuardian"
             if not carrying and not trash_obj.is_delivered:
                  d = math.hypot(player.rect.centerx - trash_obj.rect.centerx, player.rect.centery - trash_obj.rect.centery)
                  if d <= INTERACT_DIST:
-                    txt = small_font.render("Recoger [E/SPACE]", True, BLANCO); screen.blit(txt, txt.get_rect(midbottom=(trash_obj.rect.centerx, trash_obj.rect.top - 20)))
+                    txt = small_font.render(config.obtener_nombre("txt_recoger"), True, BLANCO); screen.blit(txt, txt.get_rect(midbottom=(trash_obj.rect.centerx, trash_obj.rect.top - 20)))
             if carrying and not trash_obj.is_delivered:
                 d = math.hypot(player.rect.centerx - bin_rect.centerx, player.rect.centery - bin_rect.centery)
                 if d <= BIN_RADIUS * 1.5:
-                    txt = small_font.render("Depositar [E/SPACE]", True, BLANCO); screen.blit(txt, txt.get_rect(midbottom=(bin_rect.centerx, bin_rect.top - 20)))
+                    txt = small_font.render(config.obtener_nombre("txt_depositar_e"), True, BLANCO); screen.blit(txt, txt.get_rect(midbottom=(bin_rect.centerx, bin_rect.top - 20)))
 
 
         elif tutorial_phase == 1:
@@ -612,7 +632,8 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str = "EcoGuardian"
             if seed_obj: seed_obj.draw(screen)
             if hole_obj: hole_obj.draw(screen, img_arbol, show_glow=carrying_seed, t=t)
             
-            if not carrying_seed and seed_obj and not seed_obj.taken: draw_movement_hud(screen, W // 2 - 100, H // 4, 30, font)
+            if not carrying_seed and seed_obj and not seed_obj.taken: 
+                draw_movement_hud(screen, W // 2 - 100, H // 4, 30, font, config.obtener_nombre("txt_movimiento"))
 
             if carrying_seed and hole_obj and not hole_obj.has_tree and hole_obj.grow_timer == 0:
                 target_center = hole_obj.rect.center; player_center = player.rect.center
@@ -624,13 +645,13 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str = "EcoGuardian"
 
             if seed_obj and not carrying_seed and not seed_obj.taken:
                 if player.rect.colliderect(seed_obj.rect.inflate(20, 20)):
-                    txt = small_font.render("Recoger [E/SPACE]", True, BLANCO); screen.blit(txt, txt.get_rect(midbottom=(seed_obj.rect.centerx, seed_obj.rect.top - 20)))
+                    txt = small_font.render(config.obtener_nombre("txt_recoger_semilla"), True, BLANCO); screen.blit(txt, txt.get_rect(midbottom=(seed_obj.rect.centerx, seed_obj.rect.top - 20)))
 
             if hole_obj and carrying_seed and not hole_obj.has_tree and hole_obj.grow_timer == 0:
                 if player.rect.colliderect(hole_obj.rect.inflate(20, 20)):
-                    txt = small_font.render("Plantar [E/SPACE]", True, BLANCO); screen.blit(txt, txt.get_rect(midbottom=(hole_obj.rect.centerx, hole_obj.rect.top - 20)))
+                    txt = small_font.render(config.obtener_nombre("txt_plantar_semilla"), True, BLANCO); screen.blit(txt, txt.get_rect(midbottom=(hole_obj.rect.centerx, hole_obj.rect.top - 20)))
             
-        elif tutorial_phase >= 2:
+        elif tutorial_phase >= 2 and tutorial_phase != 99:
             # DIBUJO FASE 2 / 3
             
             rect_target = zones_map[repair_zone_key]
@@ -653,7 +674,7 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str = "EcoGuardian"
                 
                 # Mensaje de Reparar
                 if player.rect.colliderect(rect_target):
-                     txt = small_font.render("Reparar [R]", True, BLANCO);
+                     txt = small_font.render(config.obtener_nombre("txt_reparar"), True, BLANCO);
                      screen.blit(txt, txt.get_rect(center=(center_target[0], center_target[1] + 10)))
                      
             # Barra de progreso cuando reparando
@@ -664,6 +685,23 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str = "EcoGuardian"
                  ancho_progreso = 50 * (progreso_reparacion / TIEMPO_PARA_REPARAR_TUTORIAL)
                  pygame.draw.rect(screen, VERDE, (pos_barra_x, pos_barra_y, ancho_progreso, 10), border_radius=2)
 
+            # --- DIBUJAR TEMPORIZADOR (SOLO FASE 2) ---
+            if tutorial_phase == 2 and not estado_reparacion[repair_zone_key]:
+                color_timer = BLANCO
+                if level_timer < 10: color_timer = ROJO_ALERTA
+                elif level_timer < 25: color_timer = AMARILLO
+                
+                timer_str = f"{config.obtener_nombre('txt_tutorial_time')} {int(level_timer)}"
+                t_surf = timer_font.render(timer_str, True, color_timer)
+                
+                # Fondo semitransparente para el timer
+                bg_timer_rect = t_surf.get_rect(center=(W//2, 40))
+                bg_timer_surf = pygame.Surface((bg_timer_rect.width + 20, bg_timer_rect.height + 10))
+                bg_timer_surf.set_alpha(150)
+                bg_timer_surf.fill((0,0,0))
+                screen.blit(bg_timer_surf, bg_timer_surf.get_rect(center=(W//2, 40)))
+                screen.blit(t_surf, bg_timer_rect)
+
 
         player.draw(screen)
         
@@ -671,7 +709,11 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str = "EcoGuardian"
         if message_timer > 0.0 and current_tutorial_msg:
             msg_font = pygame.font.SysFont("arial", 40, bold=True)
             a = int(255 * (message_timer / message_duration))
-            msg_surf = msg_font.render(current_tutorial_msg, True, BLANCO)
+            
+            # Ajuste de color si es mensaje de Game Over
+            color_msg = ROJO_ALERTA if tutorial_phase == 99 else BLANCO
+            
+            msg_surf = msg_font.render(current_tutorial_msg, True, color_msg)
             shadow = msg_font.render(current_tutorial_msg, True, (0, 0, 0))
 
             msg_x = W // 2; msg_y = H // 2 + int(H * 0.08)
@@ -684,10 +726,6 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str = "EcoGuardian"
             
         pygame.display.flip()
         
-        # Lógica de salida al terminar el tutorial
-        if tutorial_phase == 3 and message_timer <= 0.0:
-            running = False
-            
     # --- FIN DEL JUEGO (Salida al menú de selección) ---
     stop_level_music()
     try:
@@ -696,4 +734,3 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str = "EcoGuardian"
     except ImportError:
         pass
     return "menu"
-# (FIN DE PARTE 2)

@@ -664,6 +664,13 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str = "EcoGuardian"
         mm = remaining // 1000 // 60
         ss = (remaining // 1000) % 60
         time_str = f"{mm}:{ss:02d}"
+
+        # === INICIO DEL CÓDIGO MODIFICADO PARA EL COLOR DEL TEMPORIZADOR ===
+        text_color = (20, 15, 10)  # Color normal (marrón oscuro)
+        if remaining_ms <= 30000:  # 30 segundos
+            text_color = (200, 40, 40) # Color rojo para la emergencia
+        # === FIN DEL CÓDIGO MODIFICADO ===
+
         margin = int(W * 0.04)
         panel_w, panel_h = int(W * 0.18), int(H * 0.11)
         panel_rect = pygame.Rect(W - margin - panel_w, margin, panel_w, panel_h)
@@ -675,7 +682,9 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str = "EcoGuardian"
             inner = panel_rect.inflate(-10, -10)
             pygame.draw.rect(screen, (210, 180, 140), inner, border_radius=8)
             pygame.draw.rect(screen, (30, 20, 15), inner, 3, border_radius=8)
-        txt = timer_font.render(time_str, True, (20, 15, 10))
+            
+        # Se utiliza la variable text_color
+        txt = timer_font.render(time_str, True, text_color)
         sh  = timer_font.render(time_str, True, (0, 0, 0))
         cx = panel_rect.centerx - int(panel_rect.w * 0.12)
         cy = panel_rect.centery

@@ -3,12 +3,10 @@
 import pygame
 from pathlib import Path
 
-# Idioma actual por defecto ('es' = Español, 'en' = Inglés)
+# Idioma actual por defecto ('es' = Español, 'us' = Inglés)
 IDIOMA_ACTUAL = "es"
 
 # Diccionario de traducciones
-# Clave (Izquierda): El nombre que usas en tu código (ej: "btn_play")
-# Valor (Derecha): El nombre REAL del archivo o el texto que se mostrará
 TRADUCCIONES = {
     "es": {
         # === IMÁGENES (Español) ===
@@ -45,11 +43,13 @@ TRADUCCIONES = {
         "Tutorial": "Tutorial",
         "contador_basura": "contador_basura",
         "basurita_entregada": "basurita_entregada",
+        "flecha_indicador": "flecha_indicador", 
 
         # === TEXTOS (Español) ===
         "txt_reparar": "[R] Reparar",
         "txt_recoger": "Recoger (E)",
         "txt_plantar": "Plantar (E)",
+        "txt_depositar": "Depositar: E",
         "txt_mover_accion_pausa": "Mover: WASD/Flechas | Acción: E / Enter | Pausa: Espacio",
         "txt_herramienta": "Herramienta en mano",
         "txt_zona_reparada": "¡ZONA REPARADA!",
@@ -77,17 +77,22 @@ TRADUCCIONES = {
         "txt_plaza_hud_title": "Nivel 3 – La Plaza",
         "txt_dificil_tiempo": "(Difícil, con tiempo)",
         "txt_facil_tiempo": "(Fácil, con tiempo)",
+        
+        # Textos específicos del Tutorial
         "txt_tutorial_msg1": "¡Basura recogida! Llévala al bote.",
         "txt_tutorial_msg2": "¡FELICIDADES! Siguiente: Plantación.",
         "txt_tutorial_msg3": "Semilla recogida. ¡Plántala en el hueco!",
         "txt_tutorial_msg4": "¡Plantación iniciada! Espera a que crezca el árbol.",
-        "txt_tutorial_msg5": "¡Árbol plantado! Última prueba: Reparación. Acércate al edificio.",
-        "txt_tutorial_msg6": "¡TRES PRUEBAS SUPERADAS! Tutorial completo. Estás listo para la misión.",
+        "txt_tutorial_msg5": "¡Árbol plantado! REPARA LA PLAZA. Tienes 50 s.",
+        "txt_tutorial_msg6": "¡VICTORIA! Con esfuerzo y orden, transformaste la ciudad.",
         "txt_tutorial_msg7": "Ya tienes una herramienta",
+        "txt_tutorial_fail": "¡TIEMPO AGOTADO! La ciudad no se transformó.",
+        "txt_tutorial_time": "TIEMPO:",
+        
         "txt_plantar_semilla": "Plantar semilla (E)",
         "txt_recoger_semilla": "Recoger semilla (E)",
     },
-    "en": {
+    "us": { # <--- IMPORTANTE: CAMBIADO DE "en" A "us"
         # === IMÁGENES (Inglés - Terminación 'us') ===
         "btn_confirmar": "btn_confirmarus",
         "btn_back": "btn_backus",
@@ -122,11 +127,13 @@ TRADUCCIONES = {
         "Tutorial": "Tutorialus",
         "contador_basura": "contador_basuraus",
         "basurita_entregada": "basurita_entregadaus",
+        "flecha_indicador": "flecha_indicador",
 
         # === TEXTOS (Inglés) ===
         "txt_reparar": "[R] Repair",
         "txt_recoger": "Pick up (E)",
         "txt_plantar": "Plant (E)",
+        "txt_depositar": "Deposit: E",
         "txt_mover_accion_pausa": "Move: WASD/Arrows | Action: E / Enter | Pause: Space",
         "txt_herramienta": "Tool in hand",
         "txt_zona_reparada": "ZONE REPAIRED!",
@@ -154,44 +161,53 @@ TRADUCCIONES = {
         "txt_plaza_hud_title": "Level 3 – The Plaza",
         "txt_dificil_tiempo": "(Hard, timed)",
         "txt_facil_tiempo": "(Easy, timed)",
+        
+        # Textos específicos del Tutorial
         "txt_tutorial_msg1": "Trash collected! Take it to the bin.",
         "txt_tutorial_msg2": "SUCCESS! Next: Planting.",
         "txt_tutorial_msg3": "Seed collected. Plant it in the hole!",
         "txt_tutorial_msg4": "Planting started! Wait for the tree to grow.",
-        "txt_tutorial_msg5": "Tree planted! Last test: Repair. Get close to the building.",
-        "txt_tutorial_msg6": "THREE TESTS PASSED! Tutorial complete. You're ready for the mission.",
+        "txt_tutorial_msg5": "Tree planted! REPAIR THE PLAZA. You have 50 s.",
+        "txt_tutorial_msg6": "VICTORY! With effort and order, you transformed the city.",
         "txt_tutorial_msg7": "You already have a tool",
+        "txt_tutorial_fail": "TIME'S UP! The city was not transformed.",
+        "txt_tutorial_time": "TIME:",
+        
         "txt_plantar_semilla": "Plant seed (E)",
         "txt_recoger_semilla": "Pick up seed (E)",
     }
 }
 
 def cambiar_idioma(nuevo_idioma):
-    """Cambia el idioma global ('es' o 'en')."""
+    """Cambia el idioma global ('es' o 'us')."""
     global IDIOMA_ACTUAL
+    # Parche de seguridad: si recibe 'en', lo tratamos como 'us'
+    if nuevo_idioma == "en":
+        nuevo_idioma = "us"
+        
     if nuevo_idioma in TRADUCCIONES:
         IDIOMA_ACTUAL = nuevo_idioma
+    else:
+        print(f"[CONFIG] Intento de cambiar a idioma desconocido: {nuevo_idioma}")
 
 def obtener_nombre(clave):
     """
-    Devuelve el valor traducido. Si es un asset y el idioma no es español, 
-    devuelve la clave con el sufijo 'us'. Si es un texto, devuelve el texto.
+    Devuelve el valor traducido desde config.py.
     """
     idioma = IDIOMA_ACTUAL
     
-    # 1. Intentar obtener el texto o el asset name traducido de la lista
-    valor_traducido = TRADUCCIONES.get(idioma, TRADUCCIONES["es"]).get(clave)
+    # 1. Intentar obtener el texto del diccionario usando el idioma actual
+    diccionario_idioma = TRADUCCIONES.get(idioma, TRADUCCIONES["es"])
+    valor = diccionario_idioma.get(clave)
     
-    # 2. Si es un texto traducido, lo devuelve. (Si no termina en 'us', lo consideramos texto o stem base en ES)
-    if valor_traducido is not None and not valor_traducido.endswith("us"):
-        return valor_traducido
-    
-    # 3. Si el idioma no es español, devolvemos la clave con el sufijo 'us' para buscar el archivo.
-    if idioma != "es":
-        return clave + "us"
+    # 2. Si encontramos el valor, lo devolvemos
+    if valor is not None:
+        return valor
         
-    # 4. Si el idioma es español, devuelve el valor original (el stem del archivo o texto ES).
-    if valor_traducido is not None:
-        return valor_traducido
+    # 3. Si no existe la clave en el diccionario (quizás es un nombre de archivo dinámico)
+    # y estamos en 'us', agregamos el sufijo.
+    if idioma == "us" and not clave.endswith("us"):
+        return clave + "us"
     
+    # 4. Fallback: devolvemos la clave original
     return clave
