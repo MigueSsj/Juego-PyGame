@@ -2,6 +2,7 @@ from __future__ import annotations
 import pygame, math, random, re
 from pathlib import Path
 from typing import Optional
+import config
 
 # === Importar funciones de música (si existen) ===
 try:
@@ -337,7 +338,8 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str = "EcoGuardian"
 
     # === Flecha indicadora ===
     arrow_img = None
-    arrow_p = find_by_stem(assets_dir, "flecha") or find_by_stem(assets_dir, "arrow")
+    arrow_name = config.obtener_nombre("flecha_indicador")
+    arrow_p = find_by_stem(assets_dir, arrow_name) or find_by_stem(assets_dir, "flecha") or find_by_stem(assets_dir, "arrow")
     if arrow_p:
          arrow_img = scale_to_width(load_surface(arrow_p), int(W * 0.06))
     else:
@@ -348,7 +350,7 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str = "EcoGuardian"
 
     # === Palomita en el bote ===
     palomita_img = None
-    p = find_by_stem(assets_dir, "basurita_entregada")
+    p = find_by_stem(assets_dir, config.obtener_nombre("basurita_entregada"))
     PALOMITA_DURATION = 1.2
     palomita_timer = 0.0
     if p:
@@ -360,7 +362,7 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str = "EcoGuardian"
     # Contador personalizado
     contador_img = None
     contador_rect = None
-    contador_path = find_by_stem(assets_dir, "contador_basura")
+    contador_path = find_by_stem(assets_dir, config.obtener_nombre("contador_basura"))
     if contador_path:
         try:
             contador_img = load_surface(contador_path)
@@ -418,7 +420,7 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str = "EcoGuardian"
     check_timer = 0.0
     CHECK_DURATION = 1.0
 
-    carry_label = small_font.render("Basura en las manos", True, (255, 255, 255))
+    carry_label = small_font.render(config.obtener_nombre("txt_basura_mano"), True, (255, 255, 255))
     carry_label_bg = pygame.Surface((carry_label.get_width() + 12, carry_label.get_height() + 8), pygame.SRCALPHA)
     pygame.draw.rect(carry_label_bg, (0,0,0,160), carry_label_bg.get_rect(), border_radius=6)
     carry_label_bg.blit(carry_label, carry_label.get_rect(center=carry_label_bg.get_rect().center))
@@ -475,7 +477,9 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str = "EcoGuardian"
     try:
         lose_folder = assets_dir / "PANTALLA LOSE"
         if lose_folder.exists():
-            for stem in ["NIVEL 1P", "NIVEL1P", "NIVEL1 P", "NIVEL1P".lower(), "nivel 1p", "NIVEL1P"]:
+            lose_stem = config.obtener_nombre("lose_level1")
+            stems_to_check = [lose_stem, "NIVEL 1P", "NIVEL1P", "NIVEL1 P", "nivel 1p"]
+            for stem in stems_to_check:
                 p = find_by_stem(lose_folder, stem)
                 if p:
                     pantalla_lose_img = load_surface(p)
@@ -537,7 +541,7 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str = "EcoGuardian"
                     if nearest:
                         carrying = nearest
                         carrying.carried = True
-                        show_message = "Basura recolectada"
+                        show_message = config.obtener_nombre("txt_basura_recolectada")
                         message_timer = message_duration
                         play_click(assets_dir)
                 else:
@@ -551,7 +555,7 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str = "EcoGuardian"
                         carrying = None
                         delivered += 1
                         check_timer = CHECK_DURATION
-                        show_message = "¡Basura entregada!"
+                        show_message = config.obtener_nombre("txt_basura_entregada")
                         message_timer = message_duration
                         palomita_timer = PALOMITA_DURATION
                         play_click(assets_dir)
@@ -591,10 +595,9 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str = "EcoGuardian"
         if carrying:
             screen.blit(carrying.image, carrying.rect)
 
-        # HUD
         hud = [
-            "Nivel 1 – El Parque (Fácil, con tiempo)",
-            "Mover: WASD/Flechas | Recoger/Depositar: E / Enter | Pausa: Espacio",
+            f"{config.obtener_nombre('txt_park_hud_title')} {config.obtener_nombre('txt_facil_tiempo')}",
+            config.obtener_nombre('txt_mover_accion_pausa'),
         ]
         for i, line in enumerate(hud):
             screen.blit(font.render(line, True, (15, 15, 15)), (16 + 2, 25 + 2 + i * 26))
@@ -618,7 +621,7 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str = "EcoGuardian"
                 recti = ib.get_rect(center=icon_pos)
                 screen.blit(ib, recti)
 
-                recog = small_font.render("Recoger: E", True, (255, 255, 255))
+                recog = small_font.render(config.obtener_nombre("txt_recoger_e"), True, (255, 255, 255))
                 recog_bg = pygame.Surface((recog.get_width() + 10, recog.get_height() + 6), pygame.SRCALPHA)
                 pygame.draw.rect(recog_bg, (0,0,0,160), recog_bg.get_rect(), border_radius=6)
                 recog_bg.blit(recog, recog.get_rect(center=recog_bg.get_rect().center))
@@ -628,6 +631,11 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str = "EcoGuardian"
         if carrying:
             pulse = 0.6 + 0.4 * math.sin(t * 6.0)
             alpha = int(255 * (0.55 + 0.45 * pulse))
+            txt = config.obtener_nombre("txt_basura_mano")
+            carry_label = small_font.render(txt, True, (255, 255, 255))
+            carry_label_bg = pygame.Surface((carry_label.get_width() + 12, carry_label.get_height() + 8), pygame.SRCALPHA)
+            pygame.draw.rect(carry_label_bg, (0,0,0,160), carry_label_bg.get_rect(), border_radius=6)
+            carry_label_bg.blit(carry_label, carry_label.get_rect(center=carry_label_bg.get_rect().center))
             carry_img = carry_label_bg.copy()
             carry_img.set_alpha(alpha)
             cb_rect = carry_img.get_rect(midbottom=(player.rect.centerx, player.rect.top - 6))
@@ -777,7 +785,7 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str = "EcoGuardian"
         # === Lógica de VICTORIA ===
         if not paused and delivered >= total_trash:
             win_img = None
-            p = find_by_stem(assets_dir, "win_level1")
+            p = find_by_stem(assets_dir, config.obtener_nombre("win_level1"))
             if p:
                 img = pygame.image.load(str(p))
                 win_img = img.convert_alpha() if p.suffix.lower() == ".png" else img.convert()
@@ -820,7 +828,7 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str = "EcoGuardian"
             overlay = pygame.Surface((W, H), pygame.SRCALPHA)
             overlay.fill((0, 120, 0, 90))
             screen.blit(overlay, (0, 0))
-            wtxt = big.render("¡Parque limpio!", True, (255, 255, 255))
+            wtxt = big.render(config.obtener_nombre("txt_parque_limpio"), True, (255, 255, 255))
             screen.blit(wtxt, wtxt.get_rect(center=(W // 2, H // 2 - 10)))
             pygame.display.flip()
             pygame.time.delay(1200)
@@ -847,13 +855,13 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str = "EcoGuardian"
                     overlay = pygame.Surface((W, H), pygame.SRCALPHA)
                     overlay.fill((0, 0, 0, 160))
                     screen.blit(overlay, (0, 0))
-                    msg = big.render("¡Tiempo agotado!", True, (255, 255, 255))
+                    msg = big.render(config.obtener_nombre("txt_tiempo_agotado"), True, (255, 255, 255))
                     screen.blit(msg, msg.get_rect(center=(W // 2, H // 2 - 10)))
             else:
                 overlay = pygame.Surface((W, H), pygame.SRCALPHA)
                 overlay.fill((0, 0, 0, 160))
                 screen.blit(overlay, (0, 0))
-                msg = big.render("¡Tiempo agotado!", True, (255, 255, 255))
+                msg = big.render(config.obtener_nombre("txt_tiempo_agotado"), True, (255, 255, 255))
                 screen.blit(msg, msg.get_rect(center=(W // 2, H // 2 - 10)))
 
             pygame.display.flip()

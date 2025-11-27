@@ -6,6 +6,7 @@ import math
 import random
 from pathlib import Path
 from typing import Optional, List, Tuple, Dict
+import config
 
 # --- Importar música (con fallback) ---
 try:
@@ -347,6 +348,7 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str, dificultad: st
     tiempo_fin_juego = 0
     remaining_ms = TOTAL_MS; suspense_music_started = False
     num_edificios_reparados = 0
+    show_message = ""; message_timer = 0.0; message_duration = 1.6
 
     def reset_level():
         nonlocal estado_reparacion, progreso_reparacion, reparando_actualmente
@@ -425,12 +427,15 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str, dificultad: st
                     num_edificios_reparados += 1
                     progreso_reparacion = 0; reparando_actualmente = None
                     play_sfx("sfx_plant", assets_dir)
+                    show_message = config.obtener_nombre("txt_zona_reparada"); message_timer = message_duration
                     if all(estado_reparacion.values()):
                         victoria = True
                         stop_level_music()
                         tiempo_fin_juego = 0
             else:
                 progreso_reparacion = 0; reparando_actualmente = None
+            if message_timer > 0.0:
+                message_timer = max(0.0, message_timer - dt)
 
         screen.blit(bg_roto, (0, 0))
 
@@ -444,8 +449,13 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str, dificultad: st
                 in_zone_key = key
 
         if in_zone_key:
-            tr = font_big.render("[R]", True, BLANCO)
-            screen.blit(tr, tr.get_rect(center=zones[in_zone_key].center))
+            label_txt = config.obtener_nombre("txt_reparar")
+            tr = font_hud.render(label_txt, True, BLANCO)
+            bg = pygame.Surface((tr.get_width()+12, tr.get_height()+8), pygame.SRCALPHA)
+            bg.fill((0,0,0,150))
+            rect = bg.get_rect(center=zones[in_zone_key].center)
+            screen.blit(bg, rect.topleft)
+            screen.blit(tr, tr.get_rect(center=rect.center))
 
         jugador.draw(screen)
 
@@ -456,7 +466,7 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str, dificultad: st
             ancho_progreso = 50 * (progreso_reparacion / TIEMPO_PARA_REPARAR)
             pygame.draw.rect(screen, VERDE, (pos_barra_x, pos_barra_y, ancho_progreso, 10), border_radius=2)
 
-        texto_hud_str = "Reparar: [R] | Pausa: [ESPACIO]"
+        texto_hud_str = config.obtener_nombre("txt_mover_accion_pausa")
         texto_hud = font_hud.render(texto_hud_str, True, NEGRO)
         screen.blit(texto_hud, (15, ALTO - 35))
         texto_hud_sombra = font_hud.render(texto_hud_str, True, BLANCO)
@@ -579,6 +589,13 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str, dificultad: st
                 overlay = pygame.Surface((ANCHO, ALTO), pygame.SRCALPHA); overlay.fill((150, 0, 0, 170))
                 screen.blit(overlay, (0, 0)); texto_vic = font_titulo.render("¡Tiempo Agotado!", True, BLANCO)
                 screen.blit(texto_vic, texto_vic.get_rect(center=(ANCHO // 2, ALTO // 2)))
+
+        if message_timer > 0.0 and show_message:
+            msg_surf = font_big.render(show_message, True, BLANCO)
+            sh_surf = font_big.render(show_message, True, NEGRO)
+            center = (ANCHO//2, ALTO//2 + int(ALTO*0.08))
+            screen.blit(sh_surf, sh_surf.get_rect(center=(center[0]+2, center[1]+2)))
+            screen.blit(msg_surf, msg_surf.get_rect(center=center))
 
         pygame.display.flip()
 

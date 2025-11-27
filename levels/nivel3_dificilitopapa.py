@@ -2,6 +2,7 @@ from __future__ import annotations
 import pygame, sys, math, random, re
 from pathlib import Path
 from typing import Optional, List, Tuple
+import config
 
 # === SISTEMA DE AUDIO ===
 try:
@@ -333,9 +334,9 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str = "EcoGuardian"
                             if player.rect.colliderect(tool_item.rect.inflate(40, 40)):
                                 player.has_tool = True
                                 play_sfx("sfx_pick_seed", assets_dir)
-                                show_msg("¡Herramienta obtenida!")
+                                show_msg(config.obtener_nombre("txt_herramienta_obt"))
                         else:
-                            show_msg("Ya tienes una herramienta")
+                            show_msg(config.obtener_nombre("txt_tutorial_msg7"))
 
         if not paused and not game_over and not victory:
             remaining_ms -= ms
@@ -361,10 +362,10 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str = "EcoGuardian"
                         repair_progress = 0; current_repairing = None
                         player.has_tool = False 
                         if not all(repaired_status.values()): tool_item.respawn() 
-                        play_sfx("sfx_plant", assets_dir); show_msg("¡Zona Reparada!")
+                        play_sfx("sfx_plant", assets_dir); show_msg(config.obtener_nombre("txt_zona_reparada"))
                         if all(repaired_status.values()): victory = True; stop_level_music()
                 else:
-                    if msg_timer <= 0: show_msg("¡Necesitas la herramienta!")
+                    if msg_timer <= 0: show_msg(config.obtener_nombre("txt_necesitas_herra"))
             else:
                 repair_progress = 0; current_repairing = None
                 
@@ -378,9 +379,13 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str = "EcoGuardian"
         if not player.has_tool and not victory:
             tool_item.draw(screen)
             if player.rect.colliderect(tool_item.rect.inflate(60,60)):
-                txt = font_big.render("E", True, BLANCO)
-                pygame.draw.rect(screen, NEGRO, (tool_item.rect.centerx-15, tool_item.rect.top-40, 30, 35))
-                screen.blit(txt, (tool_item.rect.centerx-10, tool_item.rect.top-40))
+                lbl = config.obtener_nombre("txt_recoger")
+                t = font_hud.render(lbl, True, BLANCO)
+                bg = pygame.Surface((t.get_width()+12, t.get_height()+8), pygame.SRCALPHA)
+                bg.fill((0,0,0,160))
+                rr = bg.get_rect(center=(tool_item.rect.centerx, tool_item.rect.top - 25))
+                screen.blit(bg, rr.topleft)
+                screen.blit(t, t.get_rect(center=rr.center))
 
         player.draw(screen)
         if player.has_tool: 
@@ -399,8 +404,13 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str = "EcoGuardian"
                     # === CORRECCIÓN: QUITADO EL FONDO AMARILLO ===
                     # pygame.draw.rect(glow_s, (255, 255, 0, 40), rect) # <-- Comentado
                     if player.rect.colliderect(rect):
-                        tr = font_big.render("[R]", True, BLANCO)
-                        screen.blit(tr, tr.get_rect(center=rect.center))
+                        tr_txt = config.obtener_nombre("txt_reparar")
+                        tr = font_hud.render(tr_txt, True, BLANCO)
+                        bg_r = pygame.Surface((tr.get_width()+12, tr.get_height()+8), pygame.SRCALPHA)
+                        bg_r.fill((0,0,0,150))
+                        rrect = bg_r.get_rect(center=rect.center)
+                        screen.blit(bg_r, rrect.topleft)
+                        screen.blit(tr, tr.get_rect(center=rrect.center))
             screen.blit(glow_s, (0,0))
 
         # --- HUD (Timer y Contador) ---
@@ -427,9 +437,9 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str = "EcoGuardian"
             # Contador (Icono + Texto Grande)
             screen.blit(icon_tool_hud, (30, 30))
             reparadas = sum(repaired_status.values())
-            
-            txt_cnt = font_hud.render(f"Reparadas: {reparadas}/4", True, BLANCO)
-            txt_sh = font_hud.render(f"Reparadas: {reparadas}/4", True, NEGRO)
+            _lbl = config.obtener_nombre("txt_reparadas")
+            txt_cnt = font_hud.render(f"{_lbl} {reparadas}/4", True, BLANCO)
+            txt_sh = font_hud.render(f"{_lbl} {reparadas}/4", True, NEGRO)
             
             pos_x = 40 + icon_tool_hud.get_width()
             screen.blit(txt_sh, (pos_x+2, 37)); screen.blit(txt_cnt, (pos_x, 35))
@@ -443,7 +453,7 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str = "EcoGuardian"
             if win_img: screen.blit(win_img, (0,0))
             else:
                 overlay = pygame.Surface((W, H), pygame.SRCALPHA); overlay.fill((0, 0, 0, 180)); screen.blit(overlay, (0,0))
-                v_surf = font_big.render("¡ZONA REPARADA!", True, VERDE)
+                v_surf = font_big.render(config.obtener_nombre("txt_zona_reparada"), True, VERDE)
                 screen.blit(v_surf, v_surf.get_rect(center=(W//2, H//2)))
             pygame.display.flip(); pygame.time.wait(3000)
             try: import play; play.run(screen, assets_dir)
@@ -454,7 +464,7 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str = "EcoGuardian"
             if lose_img: screen.blit(lose_img, (0,0))
             else:
                 overlay = pygame.Surface((W, H), pygame.SRCALPHA); overlay.fill((50, 0, 0, 180)); screen.blit(overlay, (0,0))
-                l_surf = font_big.render("¡TIEMPO AGOTADO!", True, ROJO)
+                l_surf = font_big.render(config.obtener_nombre("txt_tiempo_agotado"), True, ROJO)
                 screen.blit(l_surf, l_surf.get_rect(center=(W//2, H//2)))
             pygame.display.flip(); pygame.time.wait(3000)
             try: import play; play.run(screen, assets_dir)

@@ -2,6 +2,7 @@ from __future__ import annotations
 import pygame, random, re, math
 from pathlib import Path
 from typing import Optional, List, Tuple, Dict, Any
+import config
 
 try:
     # === Importar funciones de música ===
@@ -463,7 +464,7 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str = "EcoGuardian"
                     carrying_seed = True
                     player.carrying_image = img_semilla
                     play_sfx("sfx_pick_seed", assets_dir)
-                    show_message = "Semilla recogida"
+                    show_message = config.obtener_nombre("txt_semilla_recogida")
                     message_timer = message_duration
                     return
             
@@ -481,7 +482,7 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str = "EcoGuardian"
                     closest_hole.start_grow()
                     total_semillas_plantadas += 1
                     play_sfx("sfx_plant", assets_dir)
-                    show_message = "Árbol plantado"
+                    show_message = config.obtener_nombre("txt_arbol_plantado")
                     message_timer = message_duration
                     return
         except Exception as e:
@@ -582,7 +583,7 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str = "EcoGuardian"
                         except Exception: pass
                         recti = ib.get_rect(center=icon_pos)
                         screen.blit(ib, recti)
-                        recog = small_font.render("Recoger semilla (E)", True, (255, 255, 255))
+                        recog = small_font.render(config.obtener_nombre("txt_recoger_semilla"), True, (255, 255, 255))
                         recog_bg = pygame.Surface((recog.get_width() + 10, recog.get_height() + 6), pygame.SRCALPHA)
                         pygame.draw.rect(recog_bg, (0,0,0,160), recog_bg.get_rect(), border_radius=6)
                         recog_bg.blit(recog, recog.get_rect(center=recog_bg.get_rect().center))
@@ -601,7 +602,7 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str = "EcoGuardian"
                     except Exception: pass
                     recti = ib.get_rect(center=icon_pos)
                     screen.blit(ib, recti)
-                    recog = small_font.render("Plantar semilla (E)", True, (255, 255, 255))
+                    recog = small_font.render(config.obtener_nombre("txt_plantar_semilla"), True, (255, 255, 255))
                     recog_bg = pygame.Surface((recog.get_width() + 10, recog.get_height() + 6), pygame.SRCALPHA)
                     pygame.draw.rect(recog_bg, (0,0,0,160), recog_bg.get_rect(), border_radius=6)
                     recog_bg.blit(recog, recog.get_rect(center=recog_bg.get_rect().center))
@@ -611,8 +612,8 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str = "EcoGuardian"
             player.draw(screen)
             
             hud = [
-                "Nivel 2 – La Calle (Fácil, con tiempo)",
-                "Mover: WASD/Flechas | Recoger/Plantar: E / Enter | Pausa: Espacio",
+                f"{config.obtener_nombre('txt_calle_hud_title')} {config.obtener_nombre('txt_facil_tiempo')}",
+                config.obtener_nombre('txt_mover_accion_pausa'),
             ]
             for i, line in enumerate(hud):
                 shadow = font.render(line, True, (15, 15, 15))
@@ -701,7 +702,7 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str = "EcoGuardian"
             overlay = pygame.Surface((W, H), pygame.SRCALPHA)
             overlay.fill((0, 0, 0, 160))
             screen.blit(overlay, (0, 0))
-            msg = big_font.render("¡Tiempo agotado!", True, (255, 255, 255))
+            msg = big_font.render(config.obtener_nombre("txt_tiempo_agotado"), True, (255, 255, 255))
             screen.blit(msg, msg.get_rect(center=(W // 2, H // 2 - 10)))
 
         if paused:

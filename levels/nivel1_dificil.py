@@ -2,6 +2,7 @@ from __future__ import annotations
 import pygame, math, random, re
 from pathlib import Path
 from typing import Optional
+import config
 
 # === Importar funciones de música (si existen) ===
 try:
@@ -420,7 +421,7 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str = "EcoGuardian"
     check_timer = 0.0
     CHECK_DURATION = 1.0
 
-    carry_label = small_font.render("Basura en las manos", True, (255, 255, 255))
+    carry_label = small_font.render(config.obtener_nombre("txt_basura_mano"), True, (255, 255, 255))
     carry_label_bg = pygame.Surface((carry_label.get_width() + 12, carry_label.get_height() + 8), pygame.SRCALPHA)
     pygame.draw.rect(carry_label_bg, (0,0,0,160), carry_label_bg.get_rect(), border_radius=6)
     carry_label_bg.blit(carry_label, carry_label.get_rect(center=carry_label_bg.get_rect().center))
@@ -542,7 +543,7 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str = "EcoGuardian"
                     if nearest:
                         carrying = nearest
                         carrying.carried = True
-                        show_message = "Basura recolectada"
+                        show_message = config.obtener_nombre("txt_basura_recolectada")
                         message_timer = message_duration
                         play_click(assets_dir)
                 else:
@@ -556,7 +557,7 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str = "EcoGuardian"
                         carrying = None
                         delivered += 1
                         check_timer = CHECK_DURATION
-                        show_message = "¡Basura entregada!"
+                        show_message = config.obtener_nombre("txt_basura_entregada")
                         message_timer = message_duration
                         palomita_timer = PALOMITA_DURATION
                         play_click(assets_dir)
@@ -595,8 +596,8 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str = "EcoGuardian"
 
         # HUD
         hud_lines = [
-            "Nivel 1 – El Parque (Difícil, con tiempo)",
-            "Mover: WASD/Flechas | Recoger: E | Pausa: Espacio",
+            f"{config.obtener_nombre('txt_park_hud_title')} {config.obtener_nombre('txt_dificil_tiempo')}",
+            config.obtener_nombre('txt_mover_accion_pausa'),
         ]
         for i, line in enumerate(hud_lines):
             shadow = font.render(line, True, (15, 15, 15))
@@ -620,7 +621,7 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str = "EcoGuardian"
                 ib.set_alpha(alpha)
                 recti = ib.get_rect(center=icon_pos)
                 screen.blit(ib, recti)
-                recog = small_font.render("Recoger: E", True, (255, 255, 255))
+                recog = small_font.render(config.obtener_nombre("txt_recoger_e"), True, (255, 255, 255))
                 recog_bg = pygame.Surface((recog.get_width() + 10, recog.get_height() + 6), pygame.SRCALPHA)
                 pygame.draw.rect(recog_bg, (0,0,0,160), recog_bg.get_rect(), border_radius=6)
                 recog_bg.blit(recog, recog.get_rect(center=recog_bg.get_rect().center))
@@ -704,8 +705,9 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str = "EcoGuardian"
         else:
             # Fallback si no hay imagen
             num_font = pygame.font.SysFont("arial", max(18, int(H * 0.055)), bold=True)
-            num_surf = num_font.render(f"Entregadas: {delivered}/{total_trash}", True, (255, 255, 255))
-            num_shadow = num_font.render(f"Entregadas: {delivered}/{total_trash}", True, (0, 0, 0))
+            _lbl = config.obtener_nombre("txt_entregadas")
+            num_surf = num_font.render(f"{_lbl} {delivered}/{total_trash}", True, (255, 255, 255))
+            num_shadow = num_font.render(f"{_lbl} {delivered}/{total_trash}", True, (0, 0, 0))
             num_rect = num_surf.get_rect(topleft=(int(W * 0.02), int(H * 0.12)))
             screen.blit(num_shadow, num_shadow.get_rect(center=(num_rect.centerx + 2, num_rect.centery + 2)))
             screen.blit(num_surf, num_rect)
@@ -837,13 +839,13 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str = "EcoGuardian"
                     overlay = pygame.Surface((W, H), pygame.SRCALPHA)
                     overlay.fill((0, 0, 0, 160))
                     screen.blit(overlay, (0, 0))
-                    msg = big.render("¡Tiempo agotado!", True, (255, 255, 255))
+                    msg = big.render(config.obtener_nombre("txt_tiempo_agotado"), True, (255, 255, 255))
                     screen.blit(msg, msg.get_rect(center=(W // 2, H // 2 - 10)))
             else:
                 overlay = pygame.Surface((W, H), pygame.SRCALPHA)
                 overlay.fill((0, 0, 0, 160))
                 screen.blit(overlay, (0, 0))
-                msg = big.render("¡Tiempo agotado!", True, (255, 255, 255))
+                msg = big.render(config.obtener_nombre("txt_tiempo_agotado"), True, (255, 255, 255))
                 screen.blit(msg, msg.get_rect(center=(W // 2, H // 2 - 10)))
 
             pygame.display.flip()

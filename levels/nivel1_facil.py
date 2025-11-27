@@ -2,7 +2,7 @@ from __future__ import annotations
 import pygame, math, random, re
 from pathlib import Path
 from typing import Optional
-import config  # <--- IMPORTANTE: Conexión con el sistema de idiomas
+import config 
 
 # === Importar funciones de música (si existen) ===
 try:
@@ -649,6 +649,11 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str = "EcoGuardian"
         if carrying:
             pulse = 0.6 + 0.4 * math.sin(t * 6.0)
             alpha = int(255 * (0.55 + 0.45 * pulse))
+            txt = config.obtener_nombre("txt_basura_mano")
+            carry_label = small_font.render(txt, True, (255, 255, 255))
+            carry_label_bg = pygame.Surface((carry_label.get_width() + 12, carry_label.get_height() + 8), pygame.SRCALPHA)
+            pygame.draw.rect(carry_label_bg, (0,0,0,160), carry_label_bg.get_rect(), border_radius=6)
+            carry_label_bg.blit(carry_label, carry_label.get_rect(center=carry_label_bg.get_rect().center))
             carry_img = carry_label_bg.copy()
             carry_img.set_alpha(alpha)
             cb_rect = carry_img.get_rect(midbottom=(player.rect.centerx, player.rect.top - 6))

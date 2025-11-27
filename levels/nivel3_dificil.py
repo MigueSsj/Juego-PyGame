@@ -2,6 +2,7 @@ from __future__ import annotations
 import pygame, sys, math, random, re
 from pathlib import Path
 from typing import Optional, List, Tuple, Dict
+import config
 
 # --- Importar música (con fallback) ---
 try:
@@ -436,11 +437,11 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str = "PERSONAJE H"
                                 w_hand = max(18, player.rect.width // 3)
                                 player.carrying_image = scale_to_width(raw_img_tool, w_hand)
                                 play_sfx("sfx_pick_seed", assets_dir)
-                                show_msg("¡Herramienta obtenida!")
+                                show_msg(config.obtener_nombre("txt_herramienta_obt"))
                             else:
-                                if msg_timer <= 0: show_msg("Presiona [E] cerca de la herramienta para recogerla.")
+                                if msg_timer <= 0: show_msg(config.obtener_nombre("txt_recoger"))
                         else:
-                            show_msg("Ya tienes una herramienta")
+                            show_msg(config.obtener_nombre("txt_tutorial_msg7"))
 
         if not paused and not game_over and not victory:
             remaining_ms -= ms
@@ -475,9 +476,9 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str = "PERSONAJE H"
                             stop_level_music()
                         else:
                             tool_item.respawn()
-                            show_msg("¡Zona Reparada! Encuentra la herramienta de nuevo.")
+                            show_msg(config.obtener_nombre("txt_zona_reparada"))
                 else:
-                    if msg_timer <= 0: show_msg("¡Necesitas la herramienta!")
+                    if msg_timer <= 0: show_msg(config.obtener_nombre("txt_necesitas_herra"))
             else:
                 repair_progress = 0; current_repairing = None
 
@@ -491,9 +492,14 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str = "PERSONAJE H"
         if not player.has_tool and not victory:
             tool_item.draw(screen)
             if player.rect.colliderect(tool_item.rect.inflate(60,60)):
-                txt = font_big.render("E", True, BLANCO)
-                pygame.draw.rect(screen, NEGRO, (tool_item.rect.centerx-15, tool_item.rect.top-40, 30, 35), border_radius=5)
-                screen.blit(txt, txt.get_rect(center=(tool_item.rect.centerx, tool_item.rect.top-25)))
+                recog_txt = config.obtener_nombre("txt_recoger")
+                label = font_hud.render(recog_txt, True, BLANCO)
+                bg_rect = pygame.Rect(0,0, label.get_width()+14, label.get_height()+10)
+                bg_rect.center = (tool_item.rect.centerx, tool_item.rect.top - 25)
+                overlay = pygame.Surface((bg_rect.w, bg_rect.h), pygame.SRCALPHA)
+                overlay.fill((0,0,0,160))
+                screen.blit(overlay, bg_rect.topleft)
+                screen.blit(label, label.get_rect(center=bg_rect.center))
 
         player.draw(screen)
 
@@ -502,20 +508,25 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str = "PERSONAJE H"
             pygame.draw.rect(screen, NEGRO, (bx, by, 60, 10), border_radius=3)
             pct = repair_progress / TIEMPO_REPARACION
             pygame.draw.rect(screen, VERDE, (bx+1, by+1, 58*pct, 8), border_radius=3)
-            r_txt = font_hud.render("[R]", True, BLANCO)
-            screen.blit(r_txt, r_txt.get_rect(center=(player.rect.centerx, by-15)))
+            r_label = font_hud.render(config.obtener_nombre("txt_reparar"), True, BLANCO)
+            r_bg = pygame.Surface((r_label.get_width()+12, r_label.get_height()+8), pygame.SRCALPHA)
+            r_bg.fill((0,0,0,150))
+            r_rect = r_bg.get_rect(center=(player.rect.centerx, by-15))
+            screen.blit(r_bg, r_rect.topleft)
+            screen.blit(r_label, r_label.get_rect(center=r_rect.center))
 
         if player.has_tool and not current_repairing:
             for k, rect in zones.items():
                 if not repaired_status[k]:
                     if player.rect.colliderect(rect):
-                        tr = font_big.render("[R]", True, BLANCO)
-                        bg_r = pygame.Rect(0, 0, tr.get_width() + 10, tr.get_height() + 5)
+                        tr_txt = config.obtener_nombre("txt_reparar")
+                        tr = font_hud.render(tr_txt, True, BLANCO)
+                        bg_r = pygame.Rect(0, 0, tr.get_width() + 12, tr.get_height() + 8)
                         bg_r.center = rect.center
                         overlay = pygame.Surface((bg_r.width, bg_r.height), pygame.SRCALPHA)
                         overlay.fill((0, 0, 0, 150))
                         screen.blit(overlay, bg_r.topleft)
-                        screen.blit(tr, tr.get_rect(center=rect.center))
+                        screen.blit(tr, tr.get_rect(center=bg_r.center))
 
         # -----------------------------
         # HUD (versión fácil reutilizada)
@@ -561,16 +572,19 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str = "PERSONAJE H"
             screen.blit(sh, sh.get_rect(center=(cx2 + 2, cy2 + 2)))
             screen.blit(txt, txt.get_rect(center=(cx2, cy2)))
 
-            hud_help = "Reparar: [R] | Herramienta: [E] | Pausa: [ESPACIO]"
-            help_txt_shadow = font_hud.render(hud_help, True, NEGRO)
-            help_txt = font_hud.render(hud_help, True, BLANCO)
-            screen.blit(help_txt_shadow, (15, H - 35))
-            screen.blit(help_txt, (13, H - 37))
+        hud_help = config.obtener_nombre("txt_mover_accion_pausa")
+        help_txt_shadow = font_hud.render(hud_help, True, NEGRO)
+        help_txt = font_hud.render(hud_help, True, BLANCO)
+        screen.blit(help_txt_shadow, (15, H - 35))
+        screen.blit(help_txt, (13, H - 37))
 
-            if msg_timer > 0:
-                m_surf = font_big.render(msg_text, True, BLANCO); s_surf = font_big.render(msg_text, True, NEGRO)
-                center = (W//2, H//4); m_rect = m_surf.get_rect(center=center)
-                screen.blit(s_surf, (m_rect.x+2, m_rect.y+2)); screen.blit(m_surf, m_rect)
+        if msg_timer > 0:
+            m_surf = font_big.render(msg_text, True, BLANCO)
+            s_surf = font_big.render(msg_text, True, NEGRO)
+            center = (W//2, H//4)
+            m_rect = m_surf.get_rect(center=center)
+            screen.blit(s_surf, (m_rect.x+2, m_rect.y+2))
+            screen.blit(m_surf, m_rect)
 
         # --- PANTALLAS FINALES ---
         if victory:
@@ -581,7 +595,7 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str = "PERSONAJE H"
             else:
                 overlay = pygame.Surface((W, H), pygame.SRCALPHA); overlay.fill((0, 150, 0, 170))
                 screen.blit(overlay, (0,0))
-                v_surf = font_big.render("¡PLAZA REPARADA!", True, VERDE)
+                v_surf = font_big.render(config.obtener_nombre("txt_zona_reparada"), True, VERDE)
                 screen.blit(v_surf, v_surf.get_rect(center=(W//2, H//2)))
             pygame.display.flip(); pygame.time.wait(2000)
             return "menu"
@@ -594,7 +608,7 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str = "PERSONAJE H"
             else:
                 overlay = pygame.Surface((W, H), pygame.SRCALPHA); overlay.fill((150, 0, 0, 170))
                 screen.blit(overlay, (0,0))
-                l_surf = font_big.render("¡TIEMPO AGOTADO!", True, ROJO)
+                l_surf = font_big.render(config.obtener_nombre("txt_tiempo_agotado"), True, ROJO)
                 screen.blit(l_surf, l_surf.get_rect(center=(W//2, H//2)))
             pygame.display.flip(); pygame.time.wait(2000)
             return "menu"
