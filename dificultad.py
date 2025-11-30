@@ -3,18 +3,28 @@ import pygame
 from pathlib import Path
 from typing import Optional
 import importlib, importlib.util, re
-from audio_shared import play_sfx  # <<< usar SFX compartidos (easy/hard/back)
+from audio_shared import play_sfx 
+import config # IMPORTAR CONFIG
 
-# ===== Helpers =====
+# ===== Helpers (MODIFICADO: Usa config.obtener_nombre) =====
 def find_by_stem(assets_dir: Path, stem: str) -> Optional[Path]:
+    real_name = config.obtener_nombre(stem)
     exts = (".png", ".jpg", ".jpeg")
+    
     for ext in exts:
-        p = assets_dir / f"{stem}{ext}"
+        p = assets_dir / f"{real_name}{ext}"
         if p.exists():
             return p
+            
     cands: list[Path] = []
     for ext in exts:
-        cands += list(assets_dir.glob(f"{stem}*{ext}"))
+        cands += list(assets_dir.glob(f"{real_name}*{ext}"))
+        
+    # Fallback al stem original
+    if not cands and real_name != stem:
+        for ext in exts:
+            cands += list(assets_dir.glob(f"{stem}*{ext}"))
+            
     return min(cands, key=lambda p: len(p.name)) if cands else None
 
 def load_image(assets_dir: Path, stems: list[str]) -> pygame.Surface | None:
@@ -26,10 +36,11 @@ def load_image(assets_dir: Path, stems: list[str]) -> pygame.Surface | None:
     return None
 
 def scale_to_width(img: pygame.Surface, new_w: int) -> pygame.Surface:
+    if img.get_width() == 0: return pygame.Surface((new_w, new_w), pygame.SRCALPHA)
     r = new_w / img.get_width()
     return pygame.transform.smoothscale(img, (new_w, int(img.get_height() * r)))
 
-# ===== Import Selección =====
+# ===== Import Selección (Sin cambios) =====
 def _import_seleccion_clase():
     try:
         from seleccion_personaje import SeleccionPersonajeScreen as Cls
@@ -58,12 +69,12 @@ def _abrir_seleccion_personaje(screen: pygame.Surface, assets_dir: Path) -> Opti
     # devuelve el nombre/label que la pantalla entrega (p.ej. "EcoGuardian (M)")
     return SeleccionPersonajeScreen(screen, assets_dir).run()
 
-# ===== Normalizador de personaje (nuevo) =====
+# ===== Normalizador de personaje (sin cambios) =====
 def _resolve_personaje_folder(label: str) -> Optional[str]:
     """
     Convierte un label devuelto por la pantalla de selección en la carpeta real:
     e.g. "EcoGuardian (M)" -> "PERSONAJE M"
-         "EcoGuardian" -> "PERSONAJE H"  (por convención si no indica M/H)
+         "EcoGuardian" -> "PERSONAJE H"  (por convención si no indica M/H)
          "H" -> "PERSONAJE H"
          "M" -> "PERSONAJE M"
     Devuelve None si no se pudo resolver.
@@ -115,7 +126,7 @@ def _resolve_personaje_folder(label: str) -> Optional[str]:
     # no se resolvió
     return None
 
-# ===== Pantalla Dificultad =====
+# ===== Pantalla Dificultad (MODIFICADO: Usa config.obtener_nombre en assets y texto) =====
 def run(screen: pygame.Surface, assets_dir: Path, nivel: int = 1, *args, **kwargs):
     """Devuelve {'dificultad': 'facil'|'dificil', 'personaje': <label original>, 'personaje_folder': <carpeta>} o None si Back."""
     clock = pygame.time.Clock()
@@ -129,14 +140,14 @@ def run(screen: pygame.Surface, assets_dir: Path, nivel: int = 1, *args, **kwarg
     scroll_x = 0; SCROLL_SPEED = 2
 
     # ===================================================================
-    # === CAMBIO: Cargar el TÍTULO específico del nivel ===
+    # === Cargar el TÍTULO específico del nivel ===
     # ===================================================================
     title_img = None
     if nivel == 2:
-        # Nombres que me sugeriste + nombre de archivo que subiste
+        # Usamos claves de config
         title_img = load_image(assets_dir, ["title_dificultad_2", "WhatsApp_Image_2025-11-08_at_7.58.00_PM-removebg-preview"])
     elif nivel == 3:
-        # Nombres que me sugeriste + nombre de archivo que subiste
+        # Usamos claves de config
         title_img = load_image(assets_dir, ["title_dificultad_3", "WhatsApp_Image_2025-11-08_at_7.58.45_PM-removebg-preview"])
 
     # Si no es 2 o 3, or si falló la carga, usa el método anterior
@@ -145,46 +156,43 @@ def run(screen: pygame.Surface, assets_dir: Path, nivel: int = 1, *args, **kwarg
     # ===================================================================
     
     if title_img:
-        # === CAMBIO: Título más chico (era 0.38) ===
         title_img = scale_to_width(title_img, int(W * 0.30))
     else:
         # Fallback final a texto si todo lo demás falla
         font_title = pygame.font.SysFont("arial", 48, bold=True)
-        title_img = font_title.render(f"Elige dificultad - Nivel {nivel}", True, (255, 255, 255))
+        
+        ### --- MODIFICACIÓN DE IDIOMA (Título de fallback) --- ###
+        title_text = config.obtener_nombre("txt_elige_dificultad") 
+        title_img = font_title.render(f"{title_text} - Nivel {nivel}", True, (255, 255, 255))
+        ### --- FIN MODIFICACIÓN DE IDIOMA --- ###
     
-    # === CAMBIO: Título más abajo (era 0.18) ===
     title_rect = title_img.get_rect(center=(W // 2, int(H * 0.22)))
 
     # ===================================================================
-    # === CAMBIO: Cargar imágenes de dificultad según el nivel ===
-    # (Este código ya lo tenías y está perfecto)
+    # === Cargar imágenes de dificultad según el nivel ===
     # ===================================================================
     if nivel == 2:
-        # Nivel 2 usa las nuevas imágenes
-        print("DEBUG: Cargando imágenes de dificultad para Nivel 2")
-        btn_normal_img  = load_image(assets_dir, ["btn_facil2", "IMAGEN DE PRINCIPIANTE NIVEL 2 EN ESPAÑOL"])
+        btn_normal_img = load_image(assets_dir, ["btn_facil2", "IMAGEN DE PRINCIPIANTE NIVEL 2 EN ESPAÑOL"])
         btn_dificil_img = load_image(assets_dir, ["btn_dificil2", "IMAGEN DE AVANZADO NIVEL 2 EN ESPAÑOL"])
     
     elif nivel == 3:
-        # Nivel 3 usa sus propias imágenes
-        print("DEBUG: Cargando imágenes de dificultad para Nivel 3")
-        btn_normal_img  = load_image(assets_dir, ["btn_facil3"])
-        btn_dificil_img = load_image(assets_dir, ["btn_dificil3", "IMAGEN DE AVANZADO NIVEL 2 EN ESPAÑOL"]) # Re-usa la difícil del Nivel 2
+        btn_normal_img = load_image(assets_dir, ["btn_facil3"])
+        btn_dificil_img = load_image(assets_dir, ["btn_dificil3", "IMAGEN DE AVANZADO NIVEL 2 EN ESPAÑOL"]) 
     
     else:
-        # Nivel 1 (y cualquier otro no definido) usa las imágenes por defecto
-        print("DEBUG: Cargando imágenes de dificultad para Nivel 1 (default)")
-        btn_normal_img  = load_image(assets_dir, ["btn_normal", "normal", "btn_facil", "facil"])
+        btn_normal_img = load_image(assets_dir, ["btn_normal", "normal", "btn_facil", "facil"])
         btn_dificil_img = load_image(assets_dir, ["btn_dificil", "dificil"])
-    # ===================================================================
 
     target_w = int(W * 0.26); gap = int(W * 0.06); HOVER_SCALE = 1.08
 
-    def prepare_button(img: pygame.Surface | None, txt: str):
+    def prepare_button(img: pygame.Surface | None, txt_key: str): # Recibe clave de texto
+        txt = config.obtener_nombre(txt_key) # Obtiene el texto traducido
+        
         if img:
             base = scale_to_width(img, target_w)
             hover = scale_to_width(base, int(base.get_width()*HOVER_SCALE))
             return base, hover
+            
         font = pygame.font.SysFont("arial", 40, bold=True)
         txtsurf = font.render(txt, True, (20,20,20))
         pad = 24
@@ -193,15 +201,19 @@ def run(screen: pygame.Surface, assets_dir: Path, nivel: int = 1, *args, **kwarg
         hover = pygame.transform.smoothscale(base, (int(base.get_width()*HOVER_SCALE), int(base.get_height()*HOVER_SCALE)))
         return base, hover
 
-    normal_base, normal_hover   = prepare_button(btn_normal_img,  "Normal")
+    ### --- MODIFICACIÓN DE IDIOMA (Textos de botones de dificultad) --- ###
+    # Asumo que 'Normal' y 'Difícil' son claves de texto en config.py
+    normal_base, normal_hover = prepare_button(btn_normal_img, "Normal") 
     dificil_base, dificil_hover = prepare_button(btn_dificil_img, "Difícil")
+    ### --- FIN MODIFICACIÓN DE IDIOMA --- ###
 
     total_w = normal_base.get_width() + dificil_base.get_width() + gap
     start_x = (W - total_w) // 2
     center_y = int(H * 0.55)
-    r_normal  = normal_base.get_rect(midleft=(start_x, center_y))
+    r_normal = normal_base.get_rect(midleft=(start_x, center_y))
     r_dificil = dificil_base.get_rect(midleft=(r_normal.right + gap, center_y))
 
+    # Botón Back
     back_img = load_image(assets_dir, ["btn_back", "regresar", "btn_regresar", "back"])
     if not back_img: raise FileNotFoundError("No existe el botón Back (btn_back*).")
     desired_w = max(120, min(int(W * 0.12), 240))
@@ -235,9 +247,9 @@ def run(screen: pygame.Surface, assets_dir: Path, nivel: int = 1, *args, **kwarg
 
         if click:
             if rN.collidepoint(mouse):
-                play_sfx("easy", assets_dir)   # <<< sonido Fácil
+                play_sfx("easy", assets_dir)
                 nombre = _abrir_seleccion_personaje(screen, assets_dir)
-                if nombre is None:  # cancelado
+                if nombre is None:
                     return None
 
                 # normalizar personaje a carpeta
@@ -250,7 +262,7 @@ def run(screen: pygame.Surface, assets_dir: Path, nivel: int = 1, *args, **kwarg
                 return {"dificultad": "facil", "personaje": nombre, "personaje_folder": carpeta}
 
             if rD.collidepoint(mouse):
-                play_sfx("hard", assets_dir)   # <<< sonido Difícil
+                play_sfx("hard", assets_dir)
                 nombre = _abrir_seleccion_personaje(screen, assets_dir)
                 if nombre is None:
                     return None
@@ -263,7 +275,7 @@ def run(screen: pygame.Surface, assets_dir: Path, nivel: int = 1, *args, **kwarg
                 return {"dificultad": "dificil", "personaje": nombre, "personaje_folder": carpeta}
 
             if current_back_rect.collidepoint(mouse):
-                play_sfx("back", assets_dir)   # <<< sonido Back
+                play_sfx("back", assets_dir)
                 return None
 
         pygame.display.flip()

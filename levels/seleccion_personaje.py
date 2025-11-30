@@ -4,17 +4,27 @@ from pathlib import Path
 from typing import Optional, List, Tuple
 from audio_shared import play_sfx
 import re
+import config # IMPORTAR CONFIG
 
-# ===== helpers =====
+# ===== helpers (MODIFICADO: Usa config.obtener_nombre) =====
 def find_by_stem(assets_dir: Path, stem: str) -> Optional[Path]:
+    real_name = config.obtener_nombre(stem)
     exts = (".png", ".jpg", ".jpeg")
+    
     for ext in exts:
-        p = assets_dir / f"{stem}{ext}"
+        p = assets_dir / f"{real_name}{ext}"
         if p.exists():
             return p
+            
     cands = []
     for ext in exts:
-        cands += list(assets_dir.glob(f"{stem}*{ext}"))
+        cands += list(assets_dir.glob(f"{real_name}*{ext}"))
+        
+    # Fallback al stem original
+    if not cands and real_name != stem:
+        for ext in exts:
+            cands += list(assets_dir.glob(f"{stem}*{ext}"))
+            
     return min(cands, key=lambda p: len(p.name)) if cands else None
 
 def load_image(assets_dir: Path, stems: list[str]) -> Optional[pygame.Surface]:
@@ -26,12 +36,12 @@ def load_image(assets_dir: Path, stems: list[str]) -> Optional[pygame.Surface]:
     return None
 
 def scale_to_width(img: pygame.Surface, new_w: int) -> pygame.Surface:
-    if img.get_width() == 0: return pygame.Surface((new_w, int(new_w*1.5)))
+    if img.get_width() == 0: return pygame.Surface((new_w, int(new_w*1.5)), pygame.SRCALPHA)
     r = new_w / img.get_width()
     return pygame.transform.smoothscale(img, (new_w, int(img.get_height() * r)))
 
 def scale_to_height(img: pygame.Surface, new_h: int) -> pygame.Surface:
-    if img.get_height() == 0: return pygame.Surface((int(new_h*0.75), new_h))
+    if img.get_height() == 0: return pygame.Surface((int(new_h*0.75), new_h), pygame.SRCALPHA)
     r = new_h / img.get_height()
     return pygame.transform.smoothscale(img, (int(img.get_width() * r), new_h))
 
@@ -41,13 +51,13 @@ def _scale_to_fit(img: pygame.Surface, box_w: int, box_h: int) -> pygame.Surface
     r = min(box_w / img.get_width(), box_h / img.get_height())
     return pygame.transform.smoothscale(img, (int(img.get_width() * r), int(img.get_height() * r)))
 
-# === Botón ===
+# === Botón (MODIFICADO: Usa clave de texto) ===
 class Button:
-    def __init__(self, rect: pygame.Rect, text: str, font: pygame.font.Font,
+    def __init__(self, rect: pygame.Rect, text_key: str, font: pygame.font.Font,
                  base_surf: pygame.Surface | None = None,
                  hover_surf: pygame.Surface | None = None):
         self.rect = rect
-        self.text = text
+        self.text_key = text_key 
         self.font = font
         self.is_hover = False
         self.is_pressed = False
@@ -68,6 +78,9 @@ class Button:
         return clicked
 
     def draw(self, surface: pygame.Surface):
+        # Actualizamos el texto en cada draw por si el idioma cambió
+        text = config.obtener_nombre(self.text_key)
+
         if self.base_surf:
             surf = self.hover_surf if self.is_hover else self.base_surf
             surface.blit(surf, surf.get_rect(center=self.rect.center))
@@ -76,10 +89,17 @@ class Button:
             color = press if self.is_pressed else (hover if self.is_hover else base)
             pygame.draw.rect(surface, (30,20,15), self.rect, border_radius=10)
             pygame.draw.rect(surface, color, self.rect.inflate(-8, -8), border_radius=8)
-            lbl = self.font.render(self.text, True, (25,20,15))
-            surface.blit(lbl, lbl.get_rect(center=self.rect.center))
+        
+        # Dibujar el texto traducido
+        lbl = self.font.render(text, True, (25,20,15))
+        if self.base_surf:
+            label_rect = lbl.get_rect(center=(self.rect.w//2, int(self.rect.h*0.72)))
+        else:
+            label_rect = lbl.get_rect(center=(self.rect.w//2, self.rect.h//2))
+        surface.blit(lbl, label_rect)
 
-# === Cargar preview ===
+
+# === Cargar preview (usa find_by_stem) ===
 def _load_character_preview(assets_dir: Path, char_folder: str, max_w: int, max_h: int) -> pygame.Surface:
     folder = assets_dir / char_folder
     if not folder.exists():
@@ -103,7 +123,7 @@ def _load_character_preview(assets_dir: Path, char_folder: str, max_w: int, max_
     
     img = None
     for stem in candidates:
-        p = find_by_stem(folder, stem)
+        p = find_by_stem(folder, stem) # Usa find_by_stem para buscar dentro de la subcarpeta del personaje
         if p:
             img = pygame.image.load(str(p))
             img = img.convert_alpha() if p.suffix.lower()==".png" else img.convert()
@@ -116,12 +136,13 @@ def _load_character_preview(assets_dir: Path, char_folder: str, max_w: int, max_
         
     return _scale_to_fit(img, max_w, max_h)
 
-# ===== Pantalla selección =====
+# ===== Pantalla selección (MODIFICADO para offset en inglés) =====
 class SeleccionPersonajeScreen:
     def __init__(self, screen: pygame.Surface, assets_dir: Path):
         self.screen = screen
         self.assets_dir = assets_dir
         self.w, self.h = self.screen.get_size()
+        
         self.clock = pygame.time.Clock()
 
         self.PAD_TOP    = int(self.h * 0.02)
@@ -143,14 +164,27 @@ class SeleccionPersonajeScreen:
         self.font_btn   = pygame.font.SysFont("Arial", max(20, self.w//28), bold=True)
         self.font_name  = pygame.font.SysFont("Arial", max(22, self.w//32), bold=True)
 
-        self.title_img = load_image(self.assets_dir, ["title_personaje", "title_seleccion_personaje",
-                                                      "elige_personaje", "elija_personaje", "elige_tu_personaje"])
+        ### --- AJUSTE DE POSICIÓN CONDICIONAL PARA IDIOMA --- ###
+        title_stem = "title_personaje" 
+        
+        # 1. Cargar la imagen del título
+        self.title_img = load_image(self.assets_dir, [title_stem, "title_seleccion_personaje",
+                                                     "elige_personaje", "elija_personaje", "elige_tu_personaje"])
+        
+        # 2. Determinar si estamos en modo EN (título largo)
+        is_english_mode = (config.obtener_nombre(title_stem) == (title_stem + "us"))
+        
+        # 3. Definir offsets: mover título abajo (+Y), mover botón arriba (-Y)
+        title_y_offset = int(self.h * 0.07) if is_english_mode else int(self.h * 0.005) 
+        button_y_offset = int(self.h * 0.05) if is_english_mode else 0 
+
         if self.title_img:
             self.title_img = scale_to_width(self.title_img, int(self.w*0.40))
-            self.title_rect = self.title_img.get_rect(center=(self.w//2, self.PAD_TOP + self.title_img.get_height()//2))
+            self.title_rect = self.title_img.get_rect(center=(self.w//2, self.PAD_TOP + self.title_img.get_height()//2 + title_y_offset))
         else:
             self.title_img = None
             self.title_rect = pygame.Rect(0,0,0,0)
+        ### --- FIN AJUSTE DE POSICIÓN CONDICIONAL --- ###
 
         # Botón confirmar
         btn_img = load_image(self.assets_dir, ["btn_confirmar", "confirmar", "btn_continuar", "continuar"])
@@ -165,11 +199,13 @@ class SeleccionPersonajeScreen:
         else:
             rect = pygame.Rect(0, 0, int(self.w*0.26), int(self.h*0.09))
         
-        rect.center = (self.w//2, self.h - self.PAD_BOTTOM - (rect.height // 2))
+        # Ajustamos la posición del botón con el offset (sube en inglés)
+        rect.center = (self.w//2, self.h - self.PAD_BOTTOM - (rect.height // 2) - button_y_offset)
         
-        self.btn_confirmar = Button(rect, "Confirmar", self.font_btn, base_surf=btn_base, hover_surf=btn_hover)
+        # Usamos la clave de texto "btn_confirmar"
+        self.btn_confirmar = Button(rect, "", self.font_btn, base_surf=btn_base, hover_surf=btn_hover)
 
-        # Marcos separados
+        # Marcos separados (usan find_by_stem)
         self.marco_h_img = load_image(self.assets_dir, ["marco_personaje_h"])
         self.marco_m_img = load_image(self.assets_dir, ["marco_personaje_m"])
         
@@ -187,6 +223,7 @@ class SeleccionPersonajeScreen:
         else:
             self.marco_m_img = scale_to_height(self.marco_m_img, box_h)
 
+        # La posición de las cajas se basa en el título y el botón
         box_area_top = self.title_rect.bottom + int(self.h * 0.03)
         box_area_bottom = self.btn_confirmar.rect.top - int(self.h * 0.03)
         box_area_h = box_area_bottom - box_area_top
@@ -262,18 +299,18 @@ class SeleccionPersonajeScreen:
                     if self.back_rect.collidepoint(mouse_pos):
                         clicked_back = True
 
-            # === Confirmar ===
-            if self.btn_confirmar.update(events):
-                if self.selected_char:
-                    play_sfx("select", self.assets_dir)
-                    return self.selected_char
-                else:
-                    play_sfx("back", self.assets_dir)
+                # === Confirmar ===
+                if self.btn_confirmar.update(events):
+                    if self.selected_char:
+                        play_sfx("select", self.assets_dir)
+                        return self.selected_char
+                    else:
+                        play_sfx("back", self.assets_dir)
 
-            # === Back ===
-            if clicked_back:
-                play_sfx("back", self.assets_dir)
-                return None
+                # === Back ===
+                if clicked_back:
+                    play_sfx("back", self.assets_dir)
+                    return None
 
             # ====================================
             # ============= DIBUJO ===============
@@ -332,17 +369,22 @@ class SeleccionPersonajeScreen:
             self.screen.blit(self.preview_h, img_rect_h)
             self.screen.blit(self.preview_m, img_rect_m)
 
-            # ======== NUEVO: Palomita arriba del seleccionado ========
+            # ======== NUEVO: Palomita en la parte inferior del marco ========
             if self.check_img and self.selected_char:
+                # Altura base del pedestal (Ajustada para que esté sobre la base)
+                check_offset_y = int(self.h * 0.03) 
+                
                 if selected_h:
+                    # Posicionar sobre el pedestal H
                     check_rect = self.check_img.get_rect(
-                        midbottom=(marco_h_rect.centerx, marco_h_rect.top - 10)
+                        midbottom=(marco_h_rect.centerx, marco_h_rect.bottom - check_offset_y)
                     )
                     self.screen.blit(self.check_img, check_rect)
 
                 if selected_m:
+                    # Posicionar sobre el pedestal M
                     check_rect = self.check_img.get_rect(
-                        midbottom=(marco_m_rect.centerx, marco_m_rect.top - 10)
+                        midbottom=(marco_m_rect.centerx, marco_m_rect.bottom - check_offset_y)
                     )
                     self.screen.blit(self.check_img, check_rect)
 

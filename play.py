@@ -1,7 +1,9 @@
 # play.py
 import pygame
 from pathlib import Path
-from audio_shared import play_sfx  # <<< SFX compartidos (select/back)
+from audio_shared import play_sfx 
+import config # IMPORTAR CONFIG
+import traceback # Necesario para el try/except de dificultad
 
 # --- IMPORT ROBUSTO DE dificultad ---
 try:
@@ -9,15 +11,26 @@ try:
 except ModuleNotFoundError:
     from levels import dificultad as dificultad
 
+### --- MODIFICACIÓN DE IDIOMA (find_by_stem) --- ###
 def find_by_stem(assets_dir: Path, stem: str) -> Path | None:
+    real_name = config.obtener_nombre(stem)
     exts = (".png", ".jpg", ".jpeg")
+    
     for ext in exts:
-        p = assets_dir / f"{stem}{ext}"
+        p = assets_dir / f"{real_name}{ext}"
         if p.exists(): return p
+        
     cands = []
     for ext in exts:
-        cands += list(assets_dir.glob(f"{stem}*{ext}"))
+        cands += list(assets_dir.glob(f"{real_name}*{ext}"))
+    
+    # Fallback al stem original
+    if not cands and real_name != stem:
+        for ext in exts:
+            cands += list(assets_dir.glob(f"{stem}*{ext}"))
+            
     return sorted(cands, key=lambda p: len(p.name))[0] if cands else None
+### --- FIN MODIFICACIÓN DE IDIOMA --- ###
 
 def load_image(assets_dir: Path, stems: list[str]) -> pygame.Surface | None:
     for stem in stems:
@@ -28,6 +41,7 @@ def load_image(assets_dir: Path, stems: list[str]) -> pygame.Surface | None:
     return None
 
 def scale_to_width(img: pygame.Surface, new_w: int) -> pygame.Surface:
+    if img.get_width() == 0: return pygame.Surface((new_w, new_w), pygame.SRCALPHA)
     r = new_w / img.get_width()
     return pygame.transform.smoothscale(img, (new_w, int(img.get_height()*r)))
 
@@ -59,6 +73,8 @@ def run(screen: pygame.Surface, assets_dir: Path):
     background = pygame.transform.smoothscale(background, (W, H))
     scroll_x = 0; SCROLL_SPEED = 2
 
+    ### --- MODIFICACIÓN DE IDIOMA (STEMS para carga de botones) --- ###
+    # Usamos las claves de config.py para que la traducción funcione
     card1 = load_image(assets_dir, ["btn_nivel_1", "nivel_1"])
     card2 = load_image(assets_dir, ["btn_nivel_2", "nivel_2"])
     card3 = load_image(assets_dir, ["btn_nivel_3", "nivel_3"])
@@ -76,13 +92,17 @@ def run(screen: pygame.Surface, assets_dir: Path):
     r2 = card2.get_rect(midleft=(r1.right + gap, center_y))
     r3 = card3.get_rect(midleft=(r2.right + gap, center_y))
 
+    # Título de niveles
     title_img = load_image(assets_dir, ["title_levels", "seleccione", "title_niveles"])
     if not title_img: raise FileNotFoundError("Falta 'title_levels.png'.")
     title_img = scale_to_width(title_img, int(W * 0.45))
     title_rect = title_img.get_rect(center=(W // 2, int(H * 0.18)))
 
+    # Botón Back
     back_img = load_image(assets_dir, ["btn_back", "regresar", "btn_regresar", "back"])
     if not back_img: raise FileNotFoundError("Falta 'btn_back*'.")
+    ### --- FIN MODIFICACIÓN DE IDIOMA --- ###
+    
     HOVER_SCALE = 1.08
     desired_w = max(120, min(int(W * 0.12), 240))
     back_img = scale_to_width(back_img, desired_w)
@@ -126,7 +146,7 @@ def run(screen: pygame.Surface, assets_dir: Path):
                     choice = dificultad.run(screen, assets_dir, nivel=lvl_num)
                 except Exception as e:
                     print(f"ERROR en dificultad.run({lvl_num}):", e)
-                    import traceback; traceback.print_exc()
+                    traceback.print_exc()
                     return None
 
                 if not isinstance(choice, dict) or "dificultad" not in choice:
