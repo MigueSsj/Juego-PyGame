@@ -389,6 +389,13 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str = "EcoGuardian"
         arrow_img_orig = pygame.Surface((30, 30), pygame.SRCALPHA)
         pygame.draw.polygon(arrow_img_orig, (255,200,0), [(0,30),(15,0),(30,30)])
     arrow_img = scale_to_width(arrow_img_orig, 30)
+    counter_icon_trash = load_image(assets_dir, ["contador_basura"])
+    counter_icon_seed = load_image(assets_dir, ["semillita_entregada"])
+    counter_icon_buildings = load_image(assets_dir, ["contador_edificios"])
+    if counter_icon_trash: counter_icon_trash = scale_to_width(counter_icon_trash, int(W * 0.12))
+    if counter_icon_seed: counter_icon_seed = scale_to_width(counter_icon_seed, int(W * 0.12))
+    if counter_icon_buildings: counter_icon_buildings = scale_to_width(counter_icon_buildings, int(W * 0.12))
+    timer_panel_img = load_image(assets_dir, ["temporizador", "timer_panel", "panel_tiempo", "TEMPORIZADOR", "TEMPORAZIDOR"])
     
     # Controles y Distancia de Interacción
     INTERACT_KEYS = (pygame.K_e, pygame.K_RETURN, pygame.K_SPACE)
@@ -425,6 +432,9 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str = "EcoGuardian"
     # --- TEMPORIZADOR DEL NIVEL 3 (50 Segundos) ---
     level_timer = 50.0  
     game_over = False
+    hud_overlay_timer = 10.0
+    transition_target_phase: int | None = None
+    transition_delay = 0.0
     
     # Mensajes
     current_tutorial_msg = ""
@@ -451,6 +461,8 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str = "EcoGuardian"
 
         if message_timer > 0.0:
             message_timer = max(0.0, message_timer - dt_sec)
+        if hud_overlay_timer > 0.0:
+            hud_overlay_timer = max(0.0, hud_overlay_timer - dt_sec)
 
         for e in pygame.event.get():
             if e.type == pygame.QUIT:
@@ -505,14 +517,9 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str = "EcoGuardian"
                         carrying = None
                         
                         set_message(config.obtener_nombre("txt_tutorial_msg2"), 4.0)
-                        play_sfx("sfx_win", assets_dir) 
-                        tutorial_phase = 1
-                        
-                        # Transición a Fase 1
-                        background, bg_rect = load_bg_fit(assets_dir, W, H, ["nivel2_calle", "n2_fondo_calle", "calle"]) 
-                        player.rect.center = (W // 2, H // 2)
-                        seed_obj = Seed((W // 4, H * 3 // 4), img_semilla)
-                        hole_obj = Hole((W * 2 // 5, H * 2 // 5), img_hoyo, assets_dir)
+                        play_sfx("sfx_win", assets_dir)
+                        transition_target_phase = 1
+                        transition_delay = 0.6
                         
             elif tutorial_phase == 1:
                 # FASE 1: PLANTACIÓN
@@ -538,15 +545,30 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str = "EcoGuardian"
             # --- Fase 3 (Conclusión) se activa en la lógica de reparación ---
 
         # --- Lógica de Transición de Fase 1 a Fase 2 ---
-        if tutorial_phase == 1 and hole_obj and hole_obj.has_tree:
+        if tutorial_phase == 1 and hole_obj and hole_obj.has_tree and transition_target_phase is None:
              set_message(config.obtener_nombre("txt_tutorial_msg5"), 4.0)
-             tutorial_phase = 2 
-             level_timer = 50.0 # REINICIAR TIMER PARA NIVEL 3
-             
-             # Transición a Fase 2
-             background = bg_roto
-             background.get_rect(topleft=(0,0))
-             player.rect.center = (W // 2, H * 0.7)
+             transition_target_phase = 2
+             transition_delay = 0.6
+
+        # --- Ejecutar transición diferida ---
+        if transition_target_phase is not None:
+            transition_delay = max(0.0, transition_delay - dt_sec)
+            if transition_delay == 0.0:
+                if transition_target_phase == 1:
+                    tutorial_phase = 1
+                    hud_overlay_timer = 10.0
+                    background, bg_rect = load_bg_fit(assets_dir, W, H, ["nivel2_calle", "n2_fondo_calle", "calle"]) 
+                    player.rect.center = (W // 2, H // 2)
+                    seed_obj = Seed((W // 4, H * 3 // 4), img_semilla)
+                    hole_obj = Hole((W * 2 // 5, H * 2 // 5), img_hoyo, assets_dir)
+                elif transition_target_phase == 2:
+                    tutorial_phase = 2
+                    level_timer = 50.0
+                    hud_overlay_timer = 10.0
+                    background = bg_roto
+                    background.get_rect(topleft=(0,0))
+                    player.rect.center = (W // 2, H * 0.7)
+                transition_target_phase = None
              
         # --- LÓGICA ESPECÍFICA DE REPARACIÓN (FASE 2) ---
         if tutorial_phase == 2:
@@ -603,7 +625,37 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str = "EcoGuardian"
             # DIBUJO FASE 0
             screen.blit(bin_img, bin_rect) 
             trash_obj.draw(screen, t) 
+            # Contador estilo nivel (solo imagen del contador del nivel)
+            if counter_icon_trash:
+                contador_rect = counter_icon_trash.get_rect(topleft=(int(W * 0.015), int(H * 0.10)))
+                screen.blit(counter_icon_trash, contador_rect)
+                num_font = pygame.font.SysFont("arial", max(18, int(H * 0.055)), bold=True)
+                num = 1 if trash_obj.is_delivered else 0
+                num_s = num_font.render(str(num), True, (255, 255, 255))
+                num_sh = num_font.render(str(num), True, (0, 0, 0))
+                nr = num_s.get_rect(midright=(contador_rect.right - 20, contador_rect.top + contador_rect.height // 2))
+                screen.blit(num_sh, num_sh.get_rect(center=(nr.centerx + 2, nr.centery + 2)))
+                screen.blit(num_s, nr)
             
+            if hud_overlay_timer > 0.0:
+                margin_x = int(W * 0.04)
+                margin_y = int(H * 0.04)
+                panel_w, panel_h = int(W * 0.18), int(H * 0.11)
+                panel_rect = pygame.Rect(W - margin_x - panel_w, margin_y, panel_w, panel_h)
+                if timer_panel_img:
+                    scaled = pygame.transform.smoothscale(timer_panel_img, (panel_rect.w, panel_rect.h))
+                    screen.blit(scaled, panel_rect.topleft)
+                else:
+                    pygame.draw.rect(screen, (30, 20, 15), panel_rect, border_radius=10)
+                    inner = panel_rect.inflate(-10, -10)
+                    pygame.draw.rect(screen, (210, 180, 140), inner, border_radius=8)
+                remaining_overlay = int(hud_overlay_timer)
+                mm = remaining_overlay // 60; ss = remaining_overlay % 60
+                time_str = f"{mm}:{ss:02d}"
+                txt = timer_font.render(time_str, True, (20, 15, 10))
+                sh = timer_font.render(time_str, True, (0, 0, 0))
+                screen.blit(sh, sh.get_rect(center=(panel_rect.centerx + 2, panel_rect.centery + 2)))
+                screen.blit(txt, txt.get_rect(center=(panel_rect.centerx, panel_rect.centery)))
             # HUD y Flechas...
             if not carrying and not trash_obj.is_delivered: 
                 # Se pasa el texto traducido al HUD desde config
@@ -631,7 +683,37 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str = "EcoGuardian"
             # DIBUJO FASE 1
             if seed_obj: seed_obj.draw(screen)
             if hole_obj: hole_obj.draw(screen, img_arbol, show_glow=carrying_seed, t=t)
+            # Contador estilo nivel fase 1
+            if counter_icon_seed:
+                contador_rect = counter_icon_seed.get_rect(topleft=(int(W * 0.015), int(H * 0.10)))
+                screen.blit(counter_icon_seed, contador_rect)
+                num_font = pygame.font.SysFont("arial", max(18, int(H * 0.055)), bold=True)
+                num = 1 if (hole_obj and hole_obj.has_tree) else 0
+                num_s = num_font.render(str(num), True, (255, 255, 255))
+                num_sh = num_font.render(str(num), True, (0, 0, 0))
+                nr = num_s.get_rect(midright=(contador_rect.right - 20, contador_rect.top + contador_rect.height // 2))
+                screen.blit(num_sh, num_sh.get_rect(center=(nr.centerx + 2, nr.centery + 2)))
+                screen.blit(num_s, nr)
             
+            if hud_overlay_timer > 0.0:
+                margin_x = int(W * 0.04)
+                margin_y = int(H * 0.04)
+                panel_w, panel_h = int(W * 0.18), int(H * 0.11)
+                panel_rect = pygame.Rect(W - margin_x - panel_w, margin_y, panel_w, panel_h)
+                if timer_panel_img:
+                    scaled = pygame.transform.smoothscale(timer_panel_img, (panel_rect.w, panel_rect.h))
+                    screen.blit(scaled, panel_rect.topleft)
+                else:
+                    pygame.draw.rect(screen, (30, 20, 15), panel_rect, border_radius=10)
+                    inner = panel_rect.inflate(-10, -10)
+                    pygame.draw.rect(screen, (210, 180, 140), inner, border_radius=8)
+                remaining_overlay = int(hud_overlay_timer)
+                mm = remaining_overlay // 60; ss = remaining_overlay % 60
+                time_str = f"{mm}:{ss:02d}"
+                txt = timer_font.render(time_str, True, (20, 15, 10))
+                sh = timer_font.render(time_str, True, (0, 0, 0))
+                screen.blit(sh, sh.get_rect(center=(panel_rect.centerx + 2, panel_rect.centery + 2)))
+                screen.blit(txt, txt.get_rect(center=(panel_rect.centerx, panel_rect.centery)))
             if not carrying_seed and seed_obj and not seed_obj.taken: 
                 draw_movement_hud(screen, W // 2 - 100, H // 4, 30, font, config.obtener_nombre("txt_movimiento"))
 
@@ -685,22 +767,34 @@ def run(screen: pygame.Surface, assets_dir: Path, personaje: str = "EcoGuardian"
                  ancho_progreso = 50 * (progreso_reparacion / TIEMPO_PARA_REPARAR_TUTORIAL)
                  pygame.draw.rect(screen, VERDE, (pos_barra_x, pos_barra_y, ancho_progreso, 10), border_radius=2)
 
-            # --- DIBUJAR TEMPORIZADOR (SOLO FASE 2) ---
-            if tutorial_phase == 2 and not estado_reparacion[repair_zone_key]:
-                color_timer = BLANCO
-                if level_timer < 10: color_timer = ROJO_ALERTA
-                elif level_timer < 25: color_timer = AMARILLO
-                
-                timer_str = f"{config.obtener_nombre('txt_tutorial_time')} {int(level_timer)}"
-                t_surf = timer_font.render(timer_str, True, color_timer)
-                
-                # Fondo semitransparente para el timer
-                bg_timer_rect = t_surf.get_rect(center=(W//2, 40))
-                bg_timer_surf = pygame.Surface((bg_timer_rect.width + 20, bg_timer_rect.height + 10))
-                bg_timer_surf.set_alpha(150)
-                bg_timer_surf.fill((0,0,0))
-                screen.blit(bg_timer_surf, bg_timer_surf.get_rect(center=(W//2, 40)))
-                screen.blit(t_surf, bg_timer_rect)
+            # Contador estilo nivel fase 2
+            if counter_icon_buildings:
+                contador_rect = counter_icon_buildings.get_rect(topleft=(int(W * 0.015), int(H * 0.10)))
+                screen.blit(counter_icon_buildings, contador_rect)
+                num_font = pygame.font.SysFont("arial", max(18, int(H * 0.055)), bold=True)
+                num = 1 if estado_reparacion[repair_zone_key] else 0
+                num_s = num_font.render(str(num), True, (255, 255, 255))
+                num_sh = num_font.render(str(num), True, (0, 0, 0))
+                nr = num_s.get_rect(midright=(contador_rect.right - 20, contador_rect.top + contador_rect.height // 2))
+                screen.blit(num_sh, num_sh.get_rect(center=(nr.centerx + 2, nr.centery + 2)))
+                screen.blit(num_s, nr)
+
+            panel_rect = pygame.Rect(W - margin_x - panel_w, margin_y, panel_w, panel_h)
+            if timer_panel_img:
+                scaled = pygame.transform.smoothscale(timer_panel_img, (panel_rect.w, panel_rect.h))
+                screen.blit(scaled, panel_rect.topleft)
+            else:
+                pygame.draw.rect(screen, (30, 20, 15), panel_rect, border_radius=10)
+                inner = panel_rect.inflate(-10, -10)
+                pygame.draw.rect(screen, (210, 180, 140), inner, border_radius=8)
+            remaining_int = int(max(0.0, level_timer))
+            mm = remaining_int // 60; ss = remaining_int % 60
+            color_timer = ROJO_ALERTA if remaining_int < 10 else (20, 15, 10)
+            time_str = f"{mm}:{ss:02d}"
+            txt = timer_font.render(time_str, True, color_timer)
+            sh = timer_font.render(time_str, True, (0, 0, 0))
+            screen.blit(sh, sh.get_rect(center=(panel_rect.centerx + 2, panel_rect.centery + 2)))
+            screen.blit(txt, txt.get_rect(center=(panel_rect.centerx, panel_rect.centery)))
 
 
         player.draw(screen)
